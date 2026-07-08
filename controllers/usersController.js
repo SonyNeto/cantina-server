@@ -4,6 +4,12 @@ const User = require('../models/user');
 const Membership = require('../models/membership');
 const Workspace = require('../models/workspace');
 
+const cookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+};
+
 async function signup(req, res) {
   try {
     const { email, password } = req.body;
@@ -32,10 +38,8 @@ async function login(req, res) {
     const token = jwt.sign({ sub: user._id, exp }, process.env.JWT_SECRET);
 
     res.cookie('Authorization', token, {
+      ...cookieOptions,
       expires: new Date(exp),
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
     });
 
     res.sendStatus(200);
@@ -46,11 +50,7 @@ async function login(req, res) {
 
 function logout(req, res) {
   try {
-    res.clearCookie('Authorization', {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    });
+    res.clearCookie('Authorization', cookieOptions);
 
     res.sendStatus(200);
   } catch {
