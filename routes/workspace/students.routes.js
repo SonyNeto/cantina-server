@@ -24,5 +24,10 @@ router.patch(
   requireWorkspaceAdmin,
   studentsController.updateStudent,
 );
+router.delete(
+  '/responsibles/:responsibleId/students/:id',
+  requireWorkspaceAdmin,
+  studentsController.deleteStudent,
+);
 
 module.exports = router;

@@ -6,5 +6,6 @@ router.get('/:id', requireWorkspaceAdmin, responsiblesController.fetchResponsibl
 router.get('/', requireWorkspaceAdmin, responsiblesController.fetchResponsibles);
 router.post('/', requireWorkspaceAdmin, responsiblesController.postResponsible);
 router.patch('/:id', requireWorkspaceAdmin, responsiblesController.updateResponsible);
+router.delete('/:id', requireWorkspaceAdmin, responsiblesController.deleteResponsible);
 
 module.exports = router;

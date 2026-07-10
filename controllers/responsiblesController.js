@@ -1,4 +1,8 @@
+const mongoose = require('mongoose');
 const Responsible = require('../models/responsible');
+const Student = require('../models/student');
+const Register = require('../models/register');
+const Order = require('../models/order');
 
 const fetchResponsible = async (req, res) => {
   const { workspaceId, id } = req.params;
@@ -43,9 +47,33 @@ const updateResponsible = async (req, res) => {
   res.json({ responsible });
 };
 
+const deleteResponsible = async (req, res) => {
+  try {
+    const { workspaceId, id: responsibleId } = req.params;
+
+    const session = await mongoose.startSession();
+
+    await session.withTransaction(async () => {
+      const students = await Student.find({ workspaceId, responsibleId });
+      const studentIds = students.map((student) => student._id);
+
+      await Register.deleteMany({ workspaceId, studentId: { $in: studentIds } });
+      await Order.deleteMany({ workspaceId, studentId: { $in: studentIds } });
+      await Student.deleteMany({ workspaceId, responsibleId });
+      await Responsible.findOneAndDelete({ workspaceId, _id: responsibleId });
+    });
+
+    await session.endSession();
+    res.sendStatus(200);
+  } catch {
+    res.sendStatus(400);
+  }
+};
+
 module.exports = {
   fetchResponsible,
   fetchResponsibles,
   postResponsible,
   updateResponsible,
+  deleteResponsible,
 };
