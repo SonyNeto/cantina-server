@@ -28,8 +28,24 @@ const postResponsible = async (req, res) => {
   res.json({ responsible });
 };
 
+const updateResponsible = async (req, res) => {
+  const { workspaceId, id } = req.params;
+  const { name } = req.body;
+
+  const responsible = await Responsible.findOneAndUpdate(
+    { workspaceId, _id: id },
+    {
+      name,
+    },
+    { new: true },
+  );
+
+  res.json({ responsible });
+};
+
 module.exports = {
   fetchResponsible,
   fetchResponsibles,
   postResponsible,
+  updateResponsible,
 };

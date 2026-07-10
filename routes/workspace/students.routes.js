@@ -19,5 +19,10 @@ router.post(
   requireWorkspaceAdmin,
   studentsController.postStudent,
 );
+router.patch(
+  '/responsibles/:responsibleId/students/:id',
+  requireWorkspaceAdmin,
+  studentsController.updateStudent,
+);
 
 module.exports = router;

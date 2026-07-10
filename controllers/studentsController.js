@@ -53,10 +53,27 @@ const postStudent = async (req, res) => {
   res.json({ student });
 };
 
+const updateStudent = async (req, res) => {
+  const { workspaceId, responsibleId, id } = req.params;
+  const { name, classId } = req.body;
+
+  const student = await Student.findOneAndUpdate(
+    { workspaceId, responsibleId, _id: id },
+    {
+      name,
+      classId,
+    },
+    { new: true },
+  );
+
+  res.json({ student });
+};
+
 module.exports = {
   fetchStudent,
   fetchStudents,
   fetchAllStudents,
   fetchStudentsByClass,
   postStudent,
+  updateStudent,
 };

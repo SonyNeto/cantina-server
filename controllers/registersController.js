@@ -151,6 +151,7 @@ const fetchRegistersByResponsible = async (req, res) => {
   const studentsTotals = students.map((student) => ({
     id: student._id.toString(),
     name: student.name,
+    schoolClassId: student.classId.toString(),
     schoolClassLabel: schoolClassesById.get(student.classId.toString())?.label || '',
     total: totalsByStudentId[student._id.toString()] ?? 0,
   }));

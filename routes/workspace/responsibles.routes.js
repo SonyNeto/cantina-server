@@ -5,5 +5,6 @@ const responsiblesController = require('../../controllers/responsiblesController
 router.get('/:id', requireWorkspaceAdmin, responsiblesController.fetchResponsible);
 router.get('/', requireWorkspaceAdmin, responsiblesController.fetchResponsibles);
 router.post('/', requireWorkspaceAdmin, responsiblesController.postResponsible);
+router.patch('/:id', requireWorkspaceAdmin, responsiblesController.updateResponsible);
 
 module.exports = router;
