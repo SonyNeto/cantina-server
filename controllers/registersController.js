@@ -1,5 +1,4 @@
 const Register = require('../models/register');
-const MenuItem = require('../models/menuItem');
 const SchoolClass = require('../models/schoolClass');
 const Student = require('../models/student');
 const Responsible = require('../models/responsible');
@@ -28,20 +27,6 @@ function getPeriodFilter(query) {
   };
 }
 
-function parseRegisterDate(value) {
-  if (!value) return new Date();
-
-  const match = value.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-
-  if (match) {
-    const [, day, month, year] = match;
-
-    return new Date(Number(year), Number(month) - 1, Number(day));
-  }
-
-  return new Date(value);
-}
-
 const fetchRegister = async (req, res) => {
   const { workspaceId, id } = req.params;
 
@@ -67,7 +52,7 @@ const fetchResponsiblesRegisters = async (req, res) => {
 
   const totalsByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
-    acc[studentId] = (acc[studentId] ?? 0) + register.total;
+    acc[studentId] = (acc[studentId] ?? 0) + register.product.price;
 
     return acc;
   }, {});
@@ -77,8 +62,8 @@ const fetchResponsiblesRegisters = async (req, res) => {
     total: totalsByStudentId[student._id.toString()] ?? 0,
   }));
 
-  const totalsByResponsibleId = studentTotalsByResponsible.reduce((acc, register) => {
-    acc[register.responsibleId] = (acc[register.responsibleId] ?? 0) + register.total;
+  const totalsByResponsibleId = studentTotalsByResponsible.reduce((acc, studentTotal) => {
+    acc[studentTotal.responsibleId] = (acc[studentTotal.responsibleId] ?? 0) + studentTotal.total;
 
     return acc;
   }, {});
@@ -106,23 +91,18 @@ const fetchRegistersByStudent = async (req, res) => {
   }
 
   const studentName = student.name;
-  const registers = await Register.find({ workspaceId, studentId, ...periodFilter });
-  
+  const registers = await Register.find({ workspaceId, studentId, ...periodFilter }).sort({
+    created_at: -1,
+  });
+
   const registersByDate = registers.reduce((acc, register) => {
-    const date = register.created_at.toISOString().slice(0, 10);;
+    const date = register.created_at.toISOString().slice(0, 10);
 
-    const existingDate = acc.find((group) => date in group);
-
-    if (existingDate) {
-      existingDate[date].push(register);
-    } else {
-      acc.push({
-        [date] : [register],
-      });
-    }
+    acc[date] ??= [];
+    acc[date].push(register);
 
     return acc;
-  }, [])
+  }, {});
 
   res.json({ registersByDate, studentName });
 };
@@ -148,7 +128,7 @@ const fetchRegistersByResponsible = async (req, res) => {
 
   const totalsByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
-    acc[studentId] = (acc[studentId] ?? 0) + register.total;
+    acc[studentId] = (acc[studentId] ?? 0) + register.product.price;
 
     return acc;
   }, {});
@@ -173,7 +153,7 @@ const fetchRegistersByResponsible = async (req, res) => {
   }));
 
   const total = registers.reduce((sum, register) => {
-    return sum + register.total;
+    return sum + register.product.price;
   }, 0);
 
   const responsibleTotals = {
@@ -186,42 +166,10 @@ const fetchRegistersByResponsible = async (req, res) => {
   res.json({ responsibleTotals });
 };
 
-const postRegister = async (req, res) => {
-  const { product, productId, created_at, studentId, total } = req.body;
-  const { workspaceId } = req.params;
-
-  const studentExists = await Student.exists({ workspaceId, _id: studentId });
-
-  if (!studentExists) {
-    return res.status(400).json({ message: 'Aluno nao encontrado' });
-  }
-
-  const selectedProduct = product ?? (await MenuItem.findOne({ workspaceId, _id: productId }));
-
-  if (!selectedProduct) {
-    return res.status(400).json({ message: 'Produto nao encontrado' });
-  }
-
-  const register = await Register.create({
-    workspaceId,
-    product: {
-      id: selectedProduct.id ?? selectedProduct._id.toString(),
-      label: selectedProduct.label,
-      price: selectedProduct.price,
-    },
-    created_at: parseRegisterDate(created_at),
-    studentId,
-    total: total ?? selectedProduct.price,
-  });
-
-  res.json({ register });
-};
-
 module.exports = {
   fetchRegister,
   fetchResponsiblesRegisters,
   fetchRegisters,
   fetchRegistersByStudent,
   fetchRegistersByResponsible,
-  postRegister,
 };

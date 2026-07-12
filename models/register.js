@@ -1,26 +1,6 @@
 const mongoose = require('mongoose');
 const toJSONOptions = require('./utils/toJSONOptions');
-
-const productSchema = new mongoose.Schema(
-  {
-    id: {
-      type: String,
-      required: true,
-    },
-    label: {
-      type: String,
-      required: true,
-    },
-    price: {
-      type: Number,
-      required: true,
-    },
-  },
-  {
-    _id: false,
-    id: false,
-  },
-);
+const productSchema = require('./schemas/product');
 
 const registerSchema = new mongoose.Schema(
   {
@@ -42,10 +22,6 @@ const registerSchema = new mongoose.Schema(
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Student',
-      required: true,
-    },
-    total: {
-      type: Number,
       required: true,
     },
   },

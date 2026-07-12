@@ -19,6 +19,4 @@ router.get(
   requireWorkspaceAdmin,
   registersController.fetchRegistersByResponsible,
 );
-router.post('/registers', registersController.postRegister);
-
 module.exports = router;
