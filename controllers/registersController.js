@@ -171,7 +171,7 @@ const fetchRegistersByResponsible = async (req, res) => {
 };
 
 const postRegister = async (req, res) => {
-  const { product, productId, created_at, studentId, total } = req.body;
+  const { product, productId, created_at, studentId, quantity, total } = req.body;
   const { workspaceId } = req.params;
 
   const studentExists = await Student.exists({ workspaceId, _id: studentId });
@@ -195,6 +195,7 @@ const postRegister = async (req, res) => {
     },
     created_at: parseRegisterDate(created_at),
     studentId,
+    quantity,
     total: total ?? selectedProduct.price,
   });
 
