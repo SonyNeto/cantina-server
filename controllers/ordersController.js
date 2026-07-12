@@ -40,10 +40,10 @@ const fetchOrdersByStatus = async (req, res) => {
   const { workspaceId, status } = req.params;
 
   if (!isValidOrderStatus(status)) {
-    return res.status(400).json({ message: 'Status de item invalido' });
+    return res.status(400).json({ message: 'Status do item invalido' });
   }
 
-  const orders = await Order.find({ workspaceId, status });
+  const orders = await Order.find({ workspaceId, 'items.status': status });
 
   res.json({ orders });
 };
@@ -56,7 +56,7 @@ const fetchOrdersByStudent = async (req, res) => {
   res.json({ orders });
 };
 
-const fetchOrdersWithDetails = async (req, res) => {
+const fetchOrderItemsWithDetails = async (req, res) => {
   const { workspaceId } = req.params;
 
   const orders = await Order.find({ workspaceId });
@@ -77,16 +77,16 @@ const fetchOrdersWithDetails = async (req, res) => {
     schoolClasses.map((schoolClass) => [schoolClass._id.toString(), schoolClass]),
   );
 
-  const ordersWithDetails = orders.map((order) => {
+  const orderItems = orders.flatMap((order) => {
     const student = studentsById.get(order.studentId.toString());
     const schoolClass = student ? classesById.get(student.classId.toString()) : null;
 
-    return {
-      id: order._id.toString(),
-      quantity: order.quantity,
-      total: order.total,
+    return order.items.map((item) => ({
+      id: item._id.toString(),
+      orderId: order._id.toString(),
+      total: item.total,
       created_at: order.created_at,
-      status: order.status,
+      status: item.status,
       student: student
         ? {
             id: student._id.toString(),
@@ -99,15 +99,15 @@ const fetchOrdersWithDetails = async (req, res) => {
             label: schoolClass.label,
           }
         : null,
-      product: serializeProduct(order.product),
-    };
+      product: serializeProduct(item.product),
+    }));
   });
 
-  res.json({ orderItems: ordersWithDetails });
+  res.json({ orderItems });
 };
 
-const postOrders = async (req, res) => {
-  const { created_at, studentId, items, productId, menuItemId, quantity, status } = req.body;
+const postOrder = async (req, res) => {
+  const { created_at, studentId, items } = req.body;
   const { workspaceId } = req.params;
 
   const studentExists = await Student.exists({ workspaceId, _id: studentId });
@@ -116,58 +116,43 @@ const postOrders = async (req, res) => {
     return res.status(400).json({ message: 'Aluno nao encontrado' });
   }
 
-  const orderRequests = Array.isArray(items)
-    ? items
-    : [
-        {
-          productId: productId ?? menuItemId,
-          quantity,
-          status,
-        },
-      ];
-
-  if (orderRequests.length === 0) {
+  if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'Pedido precisa ter pelo menos um item' });
   }
 
-  const ordersToCreate = [];
+  const itemsToCreate = [];
 
-  for (const orderRequest of orderRequests) {
-    const orderProductId = orderRequest.productId ?? orderRequest.menuItemId;
-    const product = await MenuItem.findOne({ workspaceId, _id: orderProductId });
-    const orderQuantity = Number(orderRequest.quantity ?? 1);
+  for (const itemRequest of items) {
+    const product = await MenuItem.findOne({ workspaceId, _id: itemRequest.productId });
 
-    if (!orderProductId || !product) {
+    if (!product) {
       return res.status(400).json({ message: 'Produto nao encontrado' });
     }
 
-    if (!Number.isFinite(orderQuantity) || orderQuantity < 1) {
-      return res.status(400).json({ message: 'Quantidade invalida' });
-    }
-
-    if (orderRequest.status && !isValidOrderStatus(orderRequest.status)) {
+    if (itemRequest.status && !isValidOrderStatus(itemRequest.status)) {
       return res.status(400).json({ message: 'Status de item invalido' });
     }
 
-    ordersToCreate.push({
-      workspaceId,
-      created_at,
-      studentId,
-      productId: orderProductId,
+    itemsToCreate.push({
+      productId: itemRequest.productId,
       product: serializeProduct(product),
-      quantity: orderQuantity,
-      status: orderRequest.status ?? ORDER_STATUS.COOKING,
-      total: product.price * orderQuantity,
+      status: itemRequest.status ?? ORDER_STATUS.COOKING,
+      total: product.price,
     });
   }
 
-  const orders = await Order.create(ordersToCreate);
+  const order = await Order.create({
+    workspaceId,
+    created_at,
+    studentId,
+    items: itemsToCreate,
+  });
 
-  res.json({ orders });
+  res.json({ order });
 };
 
-const updateOrderStatus = async (req, res) => {
-  const { workspaceId, id } = req.params;
+const updateOrderItemStatus = async (req, res) => {
+  const { workspaceId, orderId, itemId } = req.params;
   const { status } = req.body;
 
   if (!isValidOrderStatus(status)) {
@@ -175,8 +160,8 @@ const updateOrderStatus = async (req, res) => {
   }
 
   const order = await Order.findOneAndUpdate(
-    { workspaceId, _id: id },
-    { status },
+    { workspaceId, _id: orderId, 'items._id': itemId },
+    { $set: { 'items.$.status': status } },
     {
       new: true,
       runValidators: true,
@@ -184,18 +169,29 @@ const updateOrderStatus = async (req, res) => {
   );
 
   if (!order) {
-    return res.status(404).json({ message: 'Pedido nao encontrado' });
+    return res.status(404).json({ message: 'Item nao encontrada' });
   }
 
-  res.json({ order });
+  res.json({ item: order.items.id(itemId) });
 };
 
-const deleteOrder = async (req, res) => {
-  const { workspaceId, id } = req.params;
+const deleteOrderItem = async (req, res) => {
+  const { workspaceId, orderId, itemId } = req.params;
+  const order = await Order.findOne({ workspaceId, _id: orderId });
+  const item = order?.items.id(itemId);
 
-  const order = await Order.findOneAndDelete({ workspaceId, _id: id });
+  if (!order || !item) {
+    return res.status(404).json({ message: 'Item nao encontrado' });
+  }
 
-  res.json({ order });
+  if (order.items.length === 1) {
+    await Order.deleteOne({ workspaceId, _id: orderId });
+  } else {
+    order.items.pull(itemId);
+    await order.save();
+  }
+
+  res.json({ item });
 };
 
 module.exports = {
@@ -203,8 +199,8 @@ module.exports = {
   fetchOrders,
   fetchOrdersByStatus,
   fetchOrdersByStudent,
-  fetchOrdersWithDetails,
-  postOrders,
-  updateOrderStatus,
-  deleteOrder,
+  fetchOrderItemsWithDetails,
+  postOrder,
+  updateOrderItemStatus,
+  deleteOrderItem,
 };

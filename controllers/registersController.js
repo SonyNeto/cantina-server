@@ -107,8 +107,24 @@ const fetchRegistersByStudent = async (req, res) => {
 
   const studentName = student.name;
   const registers = await Register.find({ workspaceId, studentId, ...periodFilter });
+  
+  const registersByDate = registers.reduce((acc, register) => {
+    const date = register.created_at.toISOString().slice(0, 10);;
 
-  res.json({ registers, studentName });
+    const existingDate = acc.find((group) => date in group);
+
+    if (existingDate) {
+      existingDate[date].push(register);
+    } else {
+      acc.push({
+        [date] : [register],
+      });
+    }
+
+    return acc;
+  }, [])
+
+  res.json({ registersByDate, studentName });
 };
 
 const fetchRegistersByResponsible = async (req, res) => {
@@ -171,7 +187,7 @@ const fetchRegistersByResponsible = async (req, res) => {
 };
 
 const postRegister = async (req, res) => {
-  const { product, productId, created_at, studentId, quantity, total } = req.body;
+  const { product, productId, created_at, studentId, total } = req.body;
   const { workspaceId } = req.params;
 
   const studentExists = await Student.exists({ workspaceId, _id: studentId });
@@ -195,7 +211,6 @@ const postRegister = async (req, res) => {
     },
     created_at: parseRegisterDate(created_at),
     studentId,
-    quantity,
     total: total ?? selectedProduct.price,
   });
 

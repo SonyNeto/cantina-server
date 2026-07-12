@@ -44,10 +44,6 @@ const registerSchema = new mongoose.Schema(
       ref: 'Student',
       required: true,
     },
-    quantity: {
-      type: Number,
-      required: true,
-    },
     total: {
       type: Number,
       required: true,

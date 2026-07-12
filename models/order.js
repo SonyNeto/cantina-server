@@ -22,6 +22,27 @@ const productSchema = new mongoose.Schema(
   },
 );
 
+const orderItemSchema = new mongoose.Schema({
+  productId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MenuItem',
+    required: true,
+  },
+  product: {
+    type: productSchema,
+    required: true,
+  },
+  status: {
+    type: String,
+    enum: ['cooking', 'ready'],
+    required: true,
+  },
+  total: {
+    type: Number,
+    required: true,
+  },
+});
+
 const orderSchema = new mongoose.Schema(
   {
     workspaceId: {
@@ -39,28 +60,13 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'MenuItem',
+    items: {
+      type: [orderItemSchema],
       required: true,
-    },
-    product: {
-      type: productSchema,
-      required: true,
-    },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
-    status: {
-      type: String,
-      enum: ['cooking', 'ready'],
-      required: true,
-    },
-    total: {
-      type: Number,
-      required: true,
+      validate: {
+        validator: (items) => items.length > 0,
+        message: 'Pedido precisa ter pelo menos um item',
+      },
     },
   },
   {
