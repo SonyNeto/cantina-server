@@ -2,6 +2,7 @@ const Register = require('../models/register');
 const SchoolClass = require('../models/schoolClass');
 const Student = require('../models/student');
 const Responsible = require('../models/responsible');
+const Shift = require('../models/shift');
 
 function getPeriodFilter(query) {
   const now = new Date();
@@ -144,13 +145,28 @@ const fetchRegistersByResponsible = async (req, res) => {
     schoolClasses.map((schoolClass) => [schoolClass._id.toString(), schoolClass]),
   );
 
-  const studentsTotals = students.map((student) => ({
-    id: student._id.toString(),
-    name: student.name,
-    schoolClassId: student.classId.toString(),
-    schoolClassLabel: schoolClassesById.get(student.classId.toString())?.label || '',
-    total: totalsByStudentId[student._id.toString()] ?? 0,
-  }));
+  const shiftsIds = schoolClasses.map((schoolClass) => schoolClass.shiftId);
+
+  const shifts = await Shift.find({ workspaceId, _id: { $in: shiftsIds } });
+
+  const shiftsById = new Map(shifts.map((shift) => [shift._id.toString(), shift]));
+
+  const studentsTotals = students.map((student) => {
+    const schoolClassId = student.classId.toString();
+    const schoolClassLabel = schoolClassesById.get(schoolClassId)?.label || '';
+    const schoolClassShift = shiftsById.get(
+      (schoolClassesById.get(schoolClassId)?.shiftId || '').toString(),
+    );
+
+    return {
+      id: student._id.toString(),
+      name: student.name,
+      schoolClassId,
+      schoolClassLabel,
+      schoolClassShiftLabel: schoolClassShift.label || '',
+      total: totalsByStudentId[student._id.toString()] ?? 0,
+    };
+  });
 
   const total = registers.reduce((sum, register) => {
     return sum + register.product.price;
