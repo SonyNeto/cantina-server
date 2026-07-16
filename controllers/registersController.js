@@ -47,9 +47,24 @@ const fetchRegisters = async (req, res) => {
 const fetchResponsiblesRegisters = async (req, res) => {
   const { workspaceId } = req.params;
   const periodFilter = getPeriodFilter(req.query);
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
+
+  if (!page || !limit) {
+    return res.sendStatus(400);
+  }
+
   const registers = await Register.find({ workspaceId, ...periodFilter });
   const students = await Student.find({ workspaceId });
-  const responsibles = await Responsible.find({ workspaceId });
+  const responsibles = await Responsible.find({ workspaceId })
+    .sort({ name: 1, _id: 1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
+
+  const numberOfResponsibles = await Responsible.countDocuments({ workspaceId });
+
+  const totalPages = Math.ceil(numberOfResponsibles / limit);
+  const nextPage = page < totalPages ? page + 1 : null;
 
   const totalsByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
@@ -79,11 +94,24 @@ const fetchResponsiblesRegisters = async (req, res) => {
     };
   });
 
-  res.json({ responsiblesTotals });
+  const pagination = {
+    page,
+    totalPages,
+    nextPage,
+  };
+
+  res.json({ responsiblesTotals, pagination });
 };
 
 const fetchRegistersByStudent = async (req, res) => {
   const { workspaceId, studentId } = req.params;
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
+
+  if (!page || !limit) {
+    return res.sendStatus(400);
+  }
+
   const periodFilter = getPeriodFilter(req.query);
   const student = await Student.findOne({ workspaceId, _id: studentId });
 
@@ -92,9 +120,21 @@ const fetchRegistersByStudent = async (req, res) => {
   }
 
   const studentName = student.name;
-  const registers = await Register.find({ workspaceId, studentId, ...periodFilter }).sort({
-    created_at: -1,
+  const registers = await Register.find({ workspaceId, studentId, ...periodFilter })
+    .sort({ created_at: -1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
+
+  const totalRegisters = await Register.find({ workspaceId, studentId, ...periodFilter });
+
+  const numberOfRegisters = await Register.countDocuments({
+    workspaceId,
+    studentId,
+    ...periodFilter,
   });
+
+  const totalPages = Math.ceil(numberOfRegisters / limit);
+  const nextPage = page < totalPages ? page + 1 : null;
 
   const registersByDate = registers.reduce((acc, register) => {
     const date = register.created_at.toISOString().slice(0, 10);
@@ -105,11 +145,28 @@ const fetchRegistersByStudent = async (req, res) => {
     return acc;
   }, {});
 
-  res.json({ registersByDate, studentName });
+  const total = totalRegisters.reduce((acc, register) => {
+    return acc + register.product.price;
+  }, 0);
+
+  const pagination = {
+    page,
+    totalPages,
+    nextPage,
+  };
+
+  res.json({ registersByDate, studentName, total, pagination });
 };
 
 const fetchRegistersByResponsible = async (req, res) => {
   const { workspaceId, responsibleId } = req.params;
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
+
+  if (!page || !limit) {
+    return res.sendStatus(400);
+  }
+
   const periodFilter = getPeriodFilter(req.query);
   const responsible = await Responsible.findOne({ workspaceId, _id: responsibleId });
 
@@ -127,6 +184,10 @@ const fetchRegistersByResponsible = async (req, res) => {
     studentId: { $in: studentIds },
   });
 
+  const numberOfStudents = await Student.countDocuments({ workspaceId, _id: { $in: studentIds } });
+  const totalPages = Math.ceil(numberOfStudents / limit);
+  const nextPage = page < totalPages ? page + 1 : null;
+
   const totalsByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
     acc[studentId] = (acc[studentId] ?? 0) + register.product.price;
@@ -134,7 +195,10 @@ const fetchRegistersByResponsible = async (req, res) => {
     return acc;
   }, {});
 
-  const students = await Student.find({ workspaceId, _id: { $in: studentIds } });
+  const students = await Student.find({ workspaceId, _id: { $in: studentIds } })
+    .sort({ name: 1, _id: 1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
 
   const schoolClasses = await SchoolClass.find({ workspaceId }).sort({
     shiftId: 1,
@@ -179,7 +243,13 @@ const fetchRegistersByResponsible = async (req, res) => {
     studentsTotals,
   };
 
-  res.json({ responsibleTotals });
+  const pagination = {
+    page,
+    totalPages,
+    nextPage,
+  };
+
+  res.json({ responsibleTotals, pagination });
 };
 
 module.exports = {

@@ -10,10 +10,30 @@ const fetchMenuItem = async (req, res) => {
 
 const fetchMenuItems = async (req, res) => {
   const { workspaceId } = req.params;
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
 
-  const menuItems = await MenuItem.find({ workspaceId });
+  if (!page || !limit) {
+    return res.sendStatus(400);
+  }
 
-  res.json({ menuItems });
+  const menuItems = await MenuItem.find({ workspaceId })
+    .sort({ label: 1, _id: 1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
+
+  const numberOfMenuItems = await MenuItem.countDocuments({ workspaceId });
+
+  const totalPages = Math.ceil(numberOfMenuItems / limit);
+  const nextPage = page < totalPages ? page + 1 : null;
+
+  const pagination = {
+    page,
+    totalPages,
+    nextPage,
+  };
+
+  res.json({ menuItems, pagination });
 };
 
 const postMenuItem = async (req, res) => {
