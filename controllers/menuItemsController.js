@@ -13,15 +13,13 @@ const fetchMenuItems = async (req, res) => {
   const page = Number(req.query.page);
   const limit = Number(req.query.limit);
 
-  let menuItems = await MenuItem.find({ workspaceId }).sort({ label: 1, _id: 1 });
+  let menuItemsQuery = MenuItem.find({ workspaceId }).sort({ label: 1, _id: 1 });
 
   let pagination = null;
 
   if (page && limit) {
-    menuItems = menuItems
-      .skip((page - 1) * limit)
-      .limit(limit);
-
+    menuItemsQuery = menuItemsQuery.skip((page - 1) * limit).limit(limit);
+    
     const numberOfMenuItems = await MenuItem.countDocuments({ workspaceId });
 
     const totalPages = Math.ceil(numberOfMenuItems / limit);
@@ -33,6 +31,8 @@ const fetchMenuItems = async (req, res) => {
       nextPage,
     };
   }
+
+  const menuItems = await menuItemsQuery;
 
   res.json({ menuItems, pagination });
 };

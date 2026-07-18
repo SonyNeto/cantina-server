@@ -49,22 +49,41 @@ const fetchResponsiblesRegisters = async (req, res) => {
   const periodFilter = getPeriodFilter(req.query);
   const page = Number(req.query.page);
   const limit = Number(req.query.limit);
+  const search = req.query.search;
 
-  if (!page || !limit) {
-    return res.sendStatus(400);
+  const responsiblesFilter = {
+    workspaceId,
+  }
+
+  if (search) {
+    responsiblesFilter['name'] = {
+      $regex: search,
+      $options: 'i',
+    }
   }
 
   const registers = await Register.find({ workspaceId, ...periodFilter });
   const students = await Student.find({ workspaceId });
-  const responsibles = await Responsible.find({ workspaceId })
-    .sort({ name: 1, _id: 1 })
-    .skip((page - 1) * limit)
-    .limit(limit);
+  let responsiblesQuery = Responsible.find(responsiblesFilter).sort({ name: 1, _id: 1 });
 
-  const numberOfResponsibles = await Responsible.countDocuments({ workspaceId });
+  let pagination = null;
 
-  const totalPages = Math.ceil(numberOfResponsibles / limit);
-  const nextPage = page < totalPages ? page + 1 : null;
+  if (page && limit) {
+    responsiblesQuery = responsiblesQuery.skip((page - 1) * limit).limit(limit);
+
+    const numberOfResponsibles = await Responsible.countDocuments(responsiblesFilter);
+
+    const totalPages = Math.ceil(numberOfResponsibles / limit);
+    const nextPage = page < totalPages ? page + 1 : null;
+
+    pagination = {
+      page,
+      totalPages,
+      nextPage,
+    };
+  }
+
+  const responsibles = await responsiblesQuery;
 
   const totalsByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
@@ -93,12 +112,6 @@ const fetchResponsiblesRegisters = async (req, res) => {
       total: totalsByResponsibleId[responsibleId] ?? 0,
     };
   });
-
-  const pagination = {
-    page,
-    totalPages,
-    nextPage,
-  };
 
   res.json({ responsiblesTotals, pagination });
 };
