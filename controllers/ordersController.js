@@ -117,7 +117,20 @@ const fetchOrders = async (req, res) => {
     };
   });
 
-  res.json({ orders: ordersWithDetails });
+  const totalActiveItems = orders.reduce((total, order) => {
+    return total + order.items.filter((item) => item.status === 'cooking').length;
+  }, 0);
+
+  const ordersBySchoolClass = ordersWithDetails.reduce((acc, order) => {
+    const schoolClass = order.schoolClass.label;
+
+    acc[schoolClass] ??= [];
+    acc[schoolClass].push(order);
+
+    return acc;
+  }, {});
+
+  res.json({ orders: ordersBySchoolClass, totalActiveItems });
 };
 
 const postOrder = async (req, res) => {
