@@ -19,7 +19,7 @@ const fetchMenuItems = async (req, res) => {
 
   if (page && limit) {
     menuItemsQuery = menuItemsQuery.skip((page - 1) * limit).limit(limit);
-    
+
     const numberOfMenuItems = await MenuItem.countDocuments({ workspaceId });
 
     const totalPages = Math.ceil(numberOfMenuItems / limit);

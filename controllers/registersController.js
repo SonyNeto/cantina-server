@@ -53,13 +53,13 @@ const fetchResponsiblesRegisters = async (req, res) => {
 
   const responsiblesFilter = {
     workspaceId,
-  }
+  };
 
   if (search) {
     responsiblesFilter['name'] = {
       $regex: search,
       $options: 'i',
-    }
+    };
   }
 
   const registers = await Register.find({ workspaceId, ...periodFilter });
@@ -87,7 +87,7 @@ const fetchResponsiblesRegisters = async (req, res) => {
 
   const totalsByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
-    acc[studentId] = (acc[studentId] ?? 0) + register.product.price;
+    acc[studentId] = (acc[studentId] ?? 0) + register.product.price - register.payment;
 
     return acc;
   }, {});
@@ -159,7 +159,8 @@ const fetchRegistersByStudent = async (req, res) => {
   }, {});
 
   const total = totalRegisters.reduce((acc, register) => {
-    return acc + register.product.price;
+    const price = register.product.price - register.payment;
+    return acc + price;
   }, 0);
 
   const pagination = {
@@ -203,7 +204,7 @@ const fetchRegistersByResponsible = async (req, res) => {
 
   const totalsByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
-    acc[studentId] = (acc[studentId] ?? 0) + register.product.price;
+    acc[studentId] = (acc[studentId] ?? 0) + register.product.price - register.payment;
 
     return acc;
   }, {});
@@ -246,7 +247,7 @@ const fetchRegistersByResponsible = async (req, res) => {
   });
 
   const total = registers.reduce((sum, register) => {
-    return sum + register.product.price;
+    return sum + register.product.price - register.payment;
   }, 0);
 
   const responsibleTotals = {
