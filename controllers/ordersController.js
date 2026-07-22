@@ -109,6 +109,7 @@ const fetchOrders = async (req, res) => {
             label: schoolClass.label,
           }
         : null,
+      payment: order.payment,
       items: order.items.map((item) => ({
         id: item._id.toString(),
         status: item.status,
@@ -134,7 +135,7 @@ const fetchOrders = async (req, res) => {
 };
 
 const postOrder = async (req, res) => {
-  const { created_at, studentId, items } = req.body;
+  const { created_at, studentId, payment, items } = req.body;
   const { workspaceId } = req.params;
 
   const studentExists = await Student.exists({ workspaceId, _id: studentId });
@@ -166,6 +167,7 @@ const postOrder = async (req, res) => {
     workspaceId,
     created_at,
     studentId,
+    payment,
     items: itemsToCreate,
   });
 
@@ -214,6 +216,7 @@ const registerOrderItem = async (req, res) => {
   const { workspaceId, orderId, itemId } = req.params;
   const order = await Order.findOne({ workspaceId, _id: orderId });
   const item = order?.items.id(itemId);
+  const payment = order?.payment;
 
   if (!order || !item) {
     return res.status(404).json({ message: 'Item nao encontrado' });
@@ -227,6 +230,7 @@ const registerOrderItem = async (req, res) => {
     workspaceId,
     product: item.product,
     created_at: parseOrderDate(order.created_at),
+    payment,
     studentId: order.studentId,
   });
 

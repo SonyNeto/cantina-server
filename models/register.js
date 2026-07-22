@@ -19,6 +19,10 @@ const registerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    payment: {
+      type: Number,
+      required: true,
+    },
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Student',
