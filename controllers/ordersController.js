@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Order = require('../models/order');
 const Register = require('../models/register');
 const MenuItem = require('../models/menuItem');
@@ -31,14 +32,20 @@ function parseOrderDate(value) {
   return new Date(Number(year), Number(month) - 1, Number(day));
 }
 
-async function removeOrderItem(order, itemId) {
+async function removeOrderItem(order, itemId, session) {
   if (order.items.length === 1) {
-    await Order.deleteOne({ workspaceId: order.workspaceId, _id: order._id });
+    await Order.deleteOne(
+      {
+        workspaceId: order.workspaceId,
+        _id: order._id,
+      },
+      { session },
+    );
     return;
   }
 
   order.items.pull(itemId);
-  await order.save();
+  await order.save({ session });
 }
 
 const fetchOrder = async (req, res) => {
@@ -148,6 +155,12 @@ const postOrder = async (req, res) => {
     return res.status(400).json({ message: 'Pedido precisa ter pelo menos um item' });
   }
 
+  if (!Number.isSafeInteger(payment) || payment < 0) {
+    return res.status(400).json({
+      message: 'O pagamento deve ser informado em centavos',
+    });
+  }
+
   const itemsToCreate = [];
 
   for (const itemRequest of items) {
@@ -200,43 +213,108 @@ const updateOrderItemStatus = async (req, res) => {
 
 const deleteOrderItem = async (req, res) => {
   const { workspaceId, orderId, itemId } = req.params;
-  const order = await Order.findOne({ workspaceId, _id: orderId });
-  const item = order?.items.id(itemId);
+  const session = await mongoose.startSession();
 
-  if (!order || !item) {
-    return res.status(404).json({ message: 'Item nao encontrado' });
+  try {
+    const deletedItem = await session.withTransaction(async () => {
+      const order = await Order.findOne({ workspaceId, _id: orderId }).session(session);
+      const item = order?.items.id(itemId);
+
+      if (!order || !item) {
+        const error = new Error('Item nao encontrado');
+        error.status = 404;
+        throw error;
+      }
+
+      const itemData = item.toObject();
+
+      await removeOrderItem(order, itemId, session);
+
+      return itemData;
+    });
+
+    return res.json({ item: deletedItem });
+  } catch (error) {
+    const status = error.status ?? 500;
+
+    return res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao deletar item',
+    });
+  } finally {
+    await session.endSession();
   }
-
-  await removeOrderItem(order, itemId);
-
-  res.json({ item });
 };
 
 const registerOrderItem = async (req, res) => {
   const { workspaceId, orderId, itemId } = req.params;
-  const order = await Order.findOne({ workspaceId, _id: orderId });
-  const item = order?.items.id(itemId);
-  const payment = order?.payment;
+  const session = await mongoose.startSession();
 
-  if (!order || !item) {
-    return res.status(404).json({ message: 'Item nao encontrado' });
+  let register;
+
+  try {
+    await session.withTransaction(async () => {
+      const order = await Order.findOne({
+        workspaceId,
+        _id: orderId,
+        'items._id': itemId,
+      }).session(session);
+
+      const item = order?.items.id(itemId);
+
+      if (!order || !item) {
+        const error = new Error('Item nao encontrado');
+        error.status = 404;
+        throw error;
+      }
+
+      if (item.status !== ORDER_STATUS.READY) {
+        const error = new Error('Item ainda nao esta pronto');
+        error.status = 400;
+        throw error;
+      }
+
+      const availablePayment = Math.max(order.payment ?? 0, 0);
+      const itemPayment = Math.min(availablePayment, item.product.price);
+
+      order.payment = availablePayment - itemPayment;
+      order.items.pull(itemId);
+
+      [register] = await Register.create(
+        [
+          {
+            workspaceId,
+            product: item.product,
+            created_at: parseOrderDate(order.created_at),
+            payment: itemPayment,
+            studentId: order.studentId,
+          },
+        ],
+        { session },
+      );
+
+      if (order.items.length === 0) {
+        await Order.deleteOne(
+          {
+            workspaceId,
+            _id: orderId,
+          },
+          { session },
+        );
+      } else {
+        await order.save({ session });
+      }
+    });
+
+    return res.json({ register });
+  } catch (error) {
+    const status = error.status ?? 500;
+
+    return res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao registrar item',
+    });
+  } finally {
+    await session.endSession();
   }
-
-  if (item.status !== ORDER_STATUS.READY) {
-    return res.status(400).json({ message: 'Item ainda nao esta pronto' });
-  }
-
-  const register = await Register.create({
-    workspaceId,
-    product: item.product,
-    created_at: parseOrderDate(order.created_at),
-    payment,
-    studentId: order.studentId,
-  });
-
-  await removeOrderItem(order, itemId);
-
-  res.json({ register });
 };
 
 module.exports = {

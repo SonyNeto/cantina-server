@@ -16,6 +16,11 @@ const menuItemSchema = new mongoose.Schema(
     price: {
       type: Number,
       required: true,
+      min: 1,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'O preco deve ser informado em centavos',
+      },
     },
   },
   {
