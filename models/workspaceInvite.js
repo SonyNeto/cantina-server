@@ -23,11 +23,11 @@ const workspaceInviteSchema = new mongoose.Schema(
     createdByUserId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      require: true,
+      required: true,
     },
     expiresAt: {
       type: Date,
-      require: true,
+      required: true,
       index: true,
     },
     usedAt: {
