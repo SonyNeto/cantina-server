@@ -19,6 +19,16 @@ const registerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    payment: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'O pagamento deve ser informado em centavos',
+      },
+    },
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Student',

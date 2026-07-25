@@ -1,5 +1,9 @@
 const MenuItem = require('../models/menuItem');
 
+function isPositiveCents(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
 const fetchMenuItem = async (req, res) => {
   const { workspaceId, id } = req.params;
 
@@ -19,7 +23,7 @@ const fetchMenuItems = async (req, res) => {
 
   if (page && limit) {
     menuItemsQuery = menuItemsQuery.skip((page - 1) * limit).limit(limit);
-    
+
     const numberOfMenuItems = await MenuItem.countDocuments({ workspaceId });
 
     const totalPages = Math.ceil(numberOfMenuItems / limit);
@@ -41,6 +45,10 @@ const postMenuItem = async (req, res) => {
   const { label, price } = req.body;
   const { workspaceId } = req.params;
 
+  if (!isPositiveCents(price)) {
+    return res.status(400).json({ message: 'O preco deve ser informado em centavos' });
+  }
+
   const menuItem = await MenuItem.create({
     workspaceId,
     label,
@@ -54,13 +62,17 @@ const updateMenuItem = async (req, res) => {
   const { workspaceId, id } = req.params;
   const { label, price } = req.body;
 
+  if (!isPositiveCents(price)) {
+    return res.status(400).json({ message: 'O preco deve ser informado em centavos' });
+  }
+
   const menuItem = await MenuItem.findOneAndUpdate(
     { workspaceId, _id: id },
     {
       label,
       price,
     },
-    { new: true },
+    { new: true, runValidators: true },
   );
 
   res.json({ menuItem });

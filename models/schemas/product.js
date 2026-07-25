@@ -13,6 +13,11 @@ const productSchema = new mongoose.Schema(
     price: {
       type: Number,
       required: true,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'O preco deve ser informado em centavos',
+      },
     },
   },
   {

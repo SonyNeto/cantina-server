@@ -31,6 +31,16 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    payment: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isSafeInteger,
+        message: 'O pagamento deve ser informado em centavos',
+      },
+    },
     items: {
       type: [orderItemSchema],
       required: true,
