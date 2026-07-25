@@ -3,6 +3,7 @@ const Order = require('../models/order');
 const Register = require('../models/register');
 const MenuItem = require('../models/menuItem');
 const Student = require('../models/student');
+const Responsible = require('../models/responsible');
 const SchoolClass = require('../models/schoolClass');
 
 const ORDER_STATUS = {
@@ -32,19 +33,59 @@ function parseOrderDate(value) {
   return new Date(Number(year), Number(month) - 1, Number(day));
 }
 
-async function removeOrderItem(order, itemId, session) {
-  if (order.items.length === 1) {
-    await Order.deleteOne(
+async function finishOrder(order, session) {
+  if (order.keepChange && order.payment > 0) {
+    const student = await Student.findOne({
+      workspaceId: order.workspaceId,
+      _id: order.studentId,
+    }).session(session);
+
+    if (!student) {
+      const error = new Error('Aluno nao encontrado');
+      error.status = 404;
+      throw error;
+    }
+
+    const balanceUpdate = await Responsible.updateOne(
       {
         workspaceId: order.workspaceId,
-        _id: order._id,
+        _id: student.responsibleId,
       },
-      { session },
+      {
+        $inc: {
+          balance: order.payment,
+        },
+      },
+      {
+        session,
+        runValidators: true,
+      },
     );
+
+    if (balanceUpdate.matchedCount === 0) {
+      const error = new Error('Responsavel nao encontrado');
+      error.status = 404;
+      throw error;
+    }
+  }
+
+  await Order.deleteOne(
+    {
+      workspaceId: order.workspaceId,
+      _id: order._id,
+    },
+    { session },
+  );
+}
+
+async function removeOrderItem(order, itemId, session) {
+  order.items.pull(itemId);
+
+  if (order.items.length === 0) {
+    await finishOrder(order, session);
     return;
   }
 
-  order.items.pull(itemId);
   await order.save({ session });
 }
 
@@ -142,7 +183,7 @@ const fetchOrders = async (req, res) => {
 };
 
 const postOrder = async (req, res) => {
-  const { created_at, studentId, payment, items } = req.body;
+  const { created_at, studentId, payment, keepChange, items } = req.body;
   const { workspaceId } = req.params;
 
   const studentExists = await Student.exists({ workspaceId, _id: studentId });
@@ -158,6 +199,12 @@ const postOrder = async (req, res) => {
   if (!Number.isSafeInteger(payment) || payment < 0) {
     return res.status(400).json({
       message: 'O pagamento deve ser informado em centavos',
+    });
+  }
+
+  if (typeof keepChange !== 'boolean') {
+    return res.status(400).json({
+      message: 'A opção de manter o troco é inválida',
     });
   }
 
@@ -181,6 +228,7 @@ const postOrder = async (req, res) => {
     created_at,
     studentId,
     payment,
+    keepChange,
     items: itemsToCreate,
   });
 
@@ -273,11 +321,60 @@ const registerOrderItem = async (req, res) => {
         throw error;
       }
 
-      const availablePayment = Math.max(order.payment ?? 0, 0);
-      const itemPayment = Math.min(availablePayment, item.product.price);
+      const student = await Student.findOne({
+        workspaceId,
+        _id: order.studentId,
+      }).session(session);
 
-      order.payment = availablePayment - itemPayment;
-      order.items.pull(itemId);
+      if (!student) {
+        const error = new Error('Aluno nao encontrado');
+        error.status = 404;
+        throw error;
+      }
+
+      const responsible = await Responsible.findOne({
+        workspaceId,
+        _id: student.responsibleId,
+      }).session(session);
+
+      if (!responsible) {
+        const error = new Error('Responsavel nao encontrado');
+        error.status = 404;
+        throw error;
+      }
+
+      const price = item.product.price;
+      const paymentApplied = Math.min(order.payment ?? 0, price);
+      order.payment = (order.payment ?? 0) - paymentApplied;
+
+      const remainingPrice = price - paymentApplied;
+      const balanceApplied = Math.min(remainingPrice, responsible.balance ?? 0);
+      const itemPayment = paymentApplied + balanceApplied;
+
+      if (balanceApplied > 0) {
+        const balanceUpdate = await Responsible.updateOne(
+          {
+            workspaceId,
+            _id: responsible._id,
+            balance: { $gte: balanceApplied },
+          },
+          {
+            $inc: {
+              balance: -balanceApplied,
+            },
+          },
+          {
+            session,
+            runValidators: true,
+          },
+        );
+
+        if (balanceUpdate.matchedCount === 0) {
+          const error = new Error('Saldo insuficiente');
+          error.status = 409;
+          throw error;
+        }
+      }
 
       [register] = await Register.create(
         [
@@ -292,17 +389,7 @@ const registerOrderItem = async (req, res) => {
         { session },
       );
 
-      if (order.items.length === 0) {
-        await Order.deleteOne(
-          {
-            workspaceId,
-            _id: orderId,
-          },
-          { session },
-        );
-      } else {
-        await order.save({ session });
-      }
+      await removeOrderItem(order, itemId, session);
     });
 
     return res.json({ register });

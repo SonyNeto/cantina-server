@@ -41,6 +41,11 @@ const orderSchema = new mongoose.Schema(
         message: 'O pagamento deve ser informado em centavos',
       },
     },
+    keepChange: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
     items: {
       type: [orderItemSchema],
       required: true,

@@ -189,6 +189,7 @@ const fetchRegistersByResponsible = async (req, res) => {
   }
 
   const responsibleName = responsible.name;
+  const balance = responsible.balance;
   const studentsByResponsible = await Student.find({ workspaceId, responsibleId });
   const studentIds = studentsByResponsible.map((student) => student._id);
 
@@ -253,6 +254,7 @@ const fetchRegistersByResponsible = async (req, res) => {
   const responsibleTotals = {
     responsibleId,
     responsibleName,
+    balance,
     total,
     studentsTotals,
   };

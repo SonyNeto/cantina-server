@@ -7,7 +7,7 @@
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon server.js",
-    "migrate": "node migrations/002-parse-menu-items-prices-to-cents.js",
+    "migrate": "node migrations/003-add-balance-to-responsibles.js",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
