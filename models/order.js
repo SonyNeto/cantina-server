@@ -46,6 +46,12 @@ const orderSchema = new mongoose.Schema(
       required: true,
       default: false,
     },
+    details: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'A observação deve ter no máximo 100 caracteres'],
+      required: false,
+    },
     items: {
       type: [orderItemSchema],
       required: true,

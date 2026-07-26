@@ -18,8 +18,8 @@ async function run() {
         label: menuItem.label,
       },
       {
-        $set: {price: Math.round(menuItem.price*100)}
-      }
+        $set: { price: Math.round(menuItem.price * 100) },
+      },
     );
 
     if (res.matchedCount === 0) {

@@ -158,6 +158,7 @@ const fetchOrders = async (req, res) => {
           }
         : null,
       payment: order.payment,
+      details: order.details,
       items: order.items.map((item) => ({
         id: item._id.toString(),
         status: item.status,
@@ -183,8 +184,22 @@ const fetchOrders = async (req, res) => {
 };
 
 const postOrder = async (req, res) => {
-  const { created_at, studentId, payment, keepChange, items } = req.body;
+  const { created_at, studentId, payment, keepChange, details, items } = req.body;
   const { workspaceId } = req.params;
+
+  if (details !== undefined && typeof details !== 'string') {
+    return res.status(400).json({
+      message: 'A observação deve ser um texto',
+    });
+  }
+
+  const normalizedDetails = details?.trim();
+
+  if (normalizedDetails && normalizedDetails.length > 100) {
+    return res.status(400).json({
+      message: 'A observação deve ter no máximo 100 caracteres',
+    });
+  }
 
   const studentExists = await Student.exists({ workspaceId, _id: studentId });
 
@@ -229,6 +244,7 @@ const postOrder = async (req, res) => {
     studentId,
     payment,
     keepChange,
+    details: normalizedDetails || undefined,
     items: itemsToCreate,
   });
 
