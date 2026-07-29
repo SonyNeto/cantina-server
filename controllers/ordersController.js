@@ -89,43 +89,17 @@ async function removeOrderItem(order, itemId, session) {
   await order.save({ session });
 }
 
-const fetchOrder = async (req, res) => {
-  const { workspaceId, id } = req.params;
+async function getOrdersWithDetails(workspaceId, status) {
+  const query = { workspaceId };
 
-  const order = await Order.findOne({ workspaceId, _id: id });
-
-  res.json({ order });
-};
-
-const fetchOrdersByStatus = async (req, res) => {
-  const { workspaceId, status } = req.params;
-
-  if (!isValidOrderStatus(status)) {
-    return res.status(400).json({ message: 'Status do item invalido' });
+  if (status) {
+    query['items.status'] = status;
   }
 
-  const orders = await Order.find({ workspaceId, 'items.status': status });
-
-  res.json({ orders });
-};
-
-const fetchOrdersByStudent = async (req, res) => {
-  const { workspaceId, studentId } = req.params;
-
-  const orders = await Order.find({ workspaceId, studentId });
-
-  res.json({ orders });
-};
-
-const fetchOrders = async (req, res) => {
-  const { workspaceId } = req.params;
-
-  const orders = await Order.find({ workspaceId });
+  const orders = await Order.find(query);
 
   const studentIds = orders.map((order) => order.studentId);
-
   const students = await Student.find({ workspaceId, _id: { $in: studentIds } });
-
   const classIds = students.map((student) => student.classId);
   const schoolClasses = await SchoolClass.find({ workspaceId, _id: { $in: classIds } }).sort({
     shiftId: 1,
@@ -159,20 +133,30 @@ const fetchOrders = async (req, res) => {
         : null,
       payment: order.payment,
       details: order.details,
-      items: order.items.map((item) => ({
-        id: item._id.toString(),
-        status: item.status,
-        product: serializeProduct(item.product),
-      })),
+      items: order.items.flatMap((item) => {
+        if (status && item.status !== status) return [];
+
+        return {
+          id: item._id.toString(),
+          status: item.status,
+          product: serializeProduct(item.product),
+        };
+      }),
     };
   });
 
-  const totalActiveItems = orders.reduce((total, order) => {
-    return total + order.items.filter((item) => item.status === 'cooking').length;
+  const totalItems = ordersWithDetails.reduce((total, order) => {
+    return total + order.items.length;
+  }, 0);
+
+  const totalActiveItems = ordersWithDetails.reduce((total, order) => {
+    return total + order.items.filter((item) => item.status === ORDER_STATUS.COOKING).length;
   }, 0);
 
   const ordersBySchoolClass = ordersWithDetails.reduce((acc, order) => {
-    const schoolClass = order.schoolClass.label;
+    if (!order.schoolClass || order.items.length === 0) return acc;
+
+    const schoolClass = order.schoolClass.id;
 
     acc[schoolClass] ??= [];
     acc[schoolClass].push(order);
@@ -180,7 +164,46 @@ const fetchOrders = async (req, res) => {
     return acc;
   }, {});
 
-  res.json({ orders: ordersBySchoolClass, totalActiveItems });
+  return {
+    orders: ordersBySchoolClass,
+    totalItems,
+    totalActiveItems,
+  };
+}
+
+const fetchOrder = async (req, res) => {
+  const { workspaceId, id } = req.params;
+
+  const order = await Order.findOne({ workspaceId, _id: id });
+
+  res.json({ order });
+};
+
+const fetchOrdersByStudent = async (req, res) => {
+  const { workspaceId, studentId } = req.params;
+
+  const orders = await Order.find({ workspaceId, studentId });
+
+  res.json({ orders });
+};
+
+const fetchOrdersByStatus = async (req, res) => {
+  const { workspaceId, status } = req.params;
+
+  if (!isValidOrderStatus(status)) {
+    return res.status(400).json({ message: 'Status do item invalido' });
+  }
+
+  const { orders, totalItems } = await getOrdersWithDetails(workspaceId, status);
+
+  res.json({ orders, totalItems });
+};
+
+const fetchOrders = async (req, res) => {
+  const { workspaceId } = req.params;
+  const { orders, totalActiveItems } = await getOrdersWithDetails(workspaceId);
+
+  res.json({ orders, totalActiveItems });
 };
 
 const postOrder = async (req, res) => {
