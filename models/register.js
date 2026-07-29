@@ -10,6 +10,9 @@ const registerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    sourceOrderItemId: {
+      type: mongoose.Schema.Types.ObjectId,
+    },
     product: {
       type: productSchema,
       required: true,
@@ -37,6 +40,19 @@ const registerSchema = new mongoose.Schema(
   },
   {
     toJSON: toJSONOptions(),
+  },
+);
+
+registerSchema.index(
+  {
+    workspaceId: 1,
+    sourceOrderItemId: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      sourceOrderItemId: { $type: 'objectId' },
+    },
   },
 );
 

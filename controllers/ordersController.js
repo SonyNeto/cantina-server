@@ -323,6 +323,17 @@ const registerOrderItem = async (req, res) => {
         'items._id': itemId,
       }).session(session);
 
+      register = await Register.findOne({
+        workspaceId,
+        sourceOrderItemId: itemId,
+      }).session(session);
+
+      if (register) {
+        const error = new Error('Item ja registrado');
+        error.status = 409;
+        throw error;
+      }
+
       const item = order?.items.id(itemId);
 
       if (!order || !item) {
@@ -396,6 +407,7 @@ const registerOrderItem = async (req, res) => {
         [
           {
             workspaceId,
+            sourceOrderItemId: item._id,
             product: item.product,
             created_at: parseOrderDate(order.created_at),
             payment: itemPayment,
