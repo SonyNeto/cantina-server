@@ -10,7 +10,8 @@
     "migrate": "node migrations/003-add-balance-to-responsibles.js",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "backup:db": "node scripts/backup-db.js"
   },
   "keywords": [],
   "author": "",
