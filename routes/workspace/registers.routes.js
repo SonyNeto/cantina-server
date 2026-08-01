@@ -7,8 +7,9 @@ router.get(
   requireWorkspaceAdmin,
   registersController.fetchResponsiblesRegisters,
 );
-router.get('/registers/:id', requireWorkspaceAdmin, registersController.fetchRegister);
 router.get('/registers', requireWorkspaceAdmin, registersController.fetchRegisters);
+router.get('/registers/summary', requireWorkspaceAdmin, registersController.fetchRegistersSummary);
+router.get('/registers/:id', requireWorkspaceAdmin, registersController.fetchRegister);
 router.get(
   '/students/:studentId/registers',
   requireWorkspaceAdmin,

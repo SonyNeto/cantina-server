@@ -5,11 +5,7 @@ const fs = require('node:fs');
 const child_process = require('node:child_process');
 const path = require('node:path');
 
-const {
-  DB_URL,
-  DB_NAME,
-  MONGODUMP_PATH = "mongodump",
-} = process.env;
+const { DB_URL, DB_NAME, MONGODUMP_PATH = 'mongodump' } = process.env;
 
 if (!DB_URL) {
   console.error('❌ A variável DB_URL não foi encontrada.');
@@ -27,14 +23,9 @@ fs.mkdirSync(backupsDirectory, { recursive: true });
 
 const now = new Date();
 
-const timestamp = now
-  .toISOString()
-  .replace(/[:.]/g, '-');
+const timestamp = now.toISOString().replace(/[:.]/g, '-');
 
-const backupFolder = path.resolve(
-  backupsDirectory,
-  `${DB_NAME}-${timestamp}`,
-);
+const backupFolder = path.resolve(backupsDirectory, `${DB_NAME}-${timestamp}`);
 
 fs.mkdirSync(backupFolder, {
   recursive: true,
@@ -44,11 +35,7 @@ console.log(`📦 Criando backup de "${DB_NAME}"...`);
 
 const result = child_process.spawnSync(
   MONGODUMP_PATH,
-  [
-    `--uri=${DB_URL}`,
-    `--db=${DB_NAME}`,
-    `--out=${backupFolder}`
-  ],
+  [`--uri=${DB_URL}`, `--db=${DB_NAME}`, `--out=${backupFolder}`],
   {
     stdio: 'inherit',
     shell: false,
@@ -60,9 +47,7 @@ if (result.error) {
   console.error(result.error.message);
 
   if (result.error.code === 'ENOENT') {
-    console.error(
-      'Verifique se o MongoDB Database Tools está no PATH do Windows.',
-    );
+    console.error('Verifique se o MongoDB Database Tools está no PATH do Windows.');
   }
 
   process.exit(1);

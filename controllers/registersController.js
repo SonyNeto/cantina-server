@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Register = require('../models/register');
 const SchoolClass = require('../models/schoolClass');
 const Student = require('../models/student');
@@ -42,6 +43,38 @@ const fetchRegisters = async (req, res) => {
   const registers = await Register.find({ workspaceId });
 
   res.json({ registers });
+};
+
+const fetchRegistersSummary = async (req, res) => {
+  const { workspaceId } = req.params;
+  const periodFilter = getPeriodFilter(req.query);
+
+  const [summary] = await Register.aggregate([
+    {
+      $match: {
+        workspaceId: new mongoose.Types.ObjectId(workspaceId),
+        ...periodFilter,
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        revenue: {
+          $sum: '$product.price',
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        revenue: 1,
+      },
+    },
+  ]);
+
+  res.json({
+    revenue: summary?.revenue ?? 0,
+  });
 };
 
 const fetchResponsiblesRegisters = async (req, res) => {
@@ -272,6 +305,7 @@ module.exports = {
   fetchRegister,
   fetchResponsiblesRegisters,
   fetchRegisters,
+  fetchRegistersSummary,
   fetchRegistersByStudent,
   fetchRegistersByResponsible,
 };
