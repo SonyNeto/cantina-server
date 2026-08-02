@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const Workspace = require('../models/workspace');
 const Membership = require('../models/membership');
+const { writeAuditLog } = require('../services/auditLogService');
 
 async function fetchWorkspace(req, res) {
   const workspaceId = req.params.workspaceId;
@@ -54,19 +56,56 @@ async function fetchUserWorkspaces(req, res) {
 async function postWorkspace(req, res) {
   const user = req.user;
   const name = req.body.name;
+  const session = await mongoose.startSession();
 
-  const workspace = await Workspace.create({
-    name,
-    ownerId: user._id,
-  });
+  try {
+    let workspace;
+    let membership;
 
-  const membership = await Membership.create({
-    userId: user._id,
-    workspaceId: workspace._id,
-    role: 'owner',
-  });
+    await session.withTransaction(async () => {
+      [workspace] = await Workspace.create(
+        [
+          {
+            name,
+            ownerId: user._id,
+          },
+        ],
+        { session },
+      );
 
-  res.json({ workspace, membership });
+      [membership] = await Membership.create(
+        [
+          {
+            userId: user._id,
+            workspaceId: workspace._id,
+            role: 'owner',
+          },
+        ],
+        { session },
+      );
+
+      await writeAuditLog({
+        req,
+        workspaceId: workspace._id,
+        actorRole: 'owner',
+        action: 'workspace.created',
+        targetType: 'workspace',
+        targetId: workspace._id,
+        changes: {
+          name: workspace.name,
+          ownerId: workspace.ownerId,
+          membershipId: membership._id,
+        },
+        session,
+      });
+    });
+
+    res.json({ workspace, membership });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  } finally {
+    await session.endSession();
+  }
 }
 
 function workspaceCheckAccess(req, res) {

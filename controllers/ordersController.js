@@ -5,6 +5,7 @@ const MenuItem = require('../models/menuItem');
 const Student = require('../models/student');
 const Responsible = require('../models/responsible');
 const SchoolClass = require('../models/schoolClass');
+const { writeAuditLog } = require('../services/auditLogService');
 
 const ORDER_STATUS = {
   COOKING: 'cooking',
@@ -209,93 +210,157 @@ const fetchOrders = async (req, res) => {
 const postOrder = async (req, res) => {
   const { created_at, studentId, payment, keepChange, details, items } = req.body;
   const { workspaceId } = req.params;
+  const session = await mongoose.startSession();
 
-  if (details !== undefined && typeof details !== 'string') {
-    return res.status(400).json({
-      message: 'A observação deve ser um texto',
-    });
-  }
-
-  const normalizedDetails = details?.trim();
-
-  if (normalizedDetails && normalizedDetails.length > 100) {
-    return res.status(400).json({
-      message: 'A observação deve ter no máximo 100 caracteres',
-    });
-  }
-
-  const studentExists = await Student.exists({ workspaceId, _id: studentId });
-
-  if (!studentExists) {
-    return res.status(400).json({ message: 'Aluno nao encontrado' });
-  }
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ message: 'Pedido precisa ter pelo menos um item' });
-  }
-
-  if (!Number.isSafeInteger(payment) || payment < 0) {
-    return res.status(400).json({
-      message: 'O pagamento deve ser informado em centavos',
-    });
-  }
-
-  if (typeof keepChange !== 'boolean') {
-    return res.status(400).json({
-      message: 'A opção de manter o troco é inválida',
-    });
-  }
-
-  const itemsToCreate = [];
-
-  for (const itemRequest of items) {
-    const product = await MenuItem.findOne({ workspaceId, _id: itemRequest.productId });
-
-    if (!product) {
-      return res.status(400).json({ message: 'Produto nao encontrado' });
+  try {
+    if (details !== undefined && typeof details !== 'string') {
+      throw new Error('A observação deve ser um texto');
     }
 
-    itemsToCreate.push({
-      product: serializeProduct(product),
-      status: ORDER_STATUS.COOKING,
+    const normalizedDetails = details?.trim();
+    if (normalizedDetails && normalizedDetails.length > 100) {
+      throw new Error('A observação deve ter no máximo 100 caracteres');
+    }
+
+    const studentExists = await Student.exists({ workspaceId, _id: studentId });
+    if (!studentExists) {
+      throw new Error('Aluno nao encontrado');
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error('Pedido precisa ter pelo menos um item');
+    }
+
+    if (!Number.isSafeInteger(payment) || payment < 0) {
+      throw new Error('O pagamento deve ser informado em centavos');
+    }
+
+    if (typeof keepChange !== 'boolean') {
+      throw new Error('A opção de manter o troco é inválida');
+    }
+
+    let order;
+    await session.withTransaction(async () => {
+      const itemsToCreate = [];
+
+      for (const itemRequest of items) {
+        const product = await MenuItem.findOne({ workspaceId, _id: itemRequest.productId }).session(
+          session,
+        );
+
+        if (!product) {
+          throw new Error('Produto nao encontrado');
+        }
+
+        itemsToCreate.push({
+          product: serializeProduct(product),
+          status: ORDER_STATUS.COOKING,
+        });
+      }
+
+      [order] = await Order.create(
+        [
+          {
+            workspaceId,
+            created_at,
+            studentId,
+            payment,
+            keepChange,
+            details: normalizedDetails || undefined,
+            items: itemsToCreate,
+          },
+        ],
+        { session },
+      );
+
+      await writeAuditLog({
+        req,
+        action: 'order.create',
+        targetType: 'order',
+        targetId: order._id,
+        changes: {
+          studentId: order.studentId,
+          created_at: order.created_at,
+          payment: order.payment,
+          keepChange: order.keepChange,
+          itemCount: order.items.length,
+          items: order.items.map((item) => ({
+            id: item._id,
+            product: item.product,
+            status: item.status,
+          })),
+        },
+        session,
+      });
     });
+
+    res.json({ order });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  } finally {
+    await session.endSession();
   }
-
-  const order = await Order.create({
-    workspaceId,
-    created_at,
-    studentId,
-    payment,
-    keepChange,
-    details: normalizedDetails || undefined,
-    items: itemsToCreate,
-  });
-
-  res.json({ order });
 };
 
 const updateOrderItemStatus = async (req, res) => {
   const { workspaceId, orderId, itemId } = req.params;
   const { status } = req.body;
+  const session = await mongoose.startSession();
 
   if (!isValidOrderStatus(status)) {
     return res.status(400).json({ message: 'Status de item invalido' });
   }
 
-  const order = await Order.findOneAndUpdate(
-    { workspaceId, _id: orderId, 'items._id': itemId },
-    { $set: { 'items.$.status': status } },
-    {
-      new: true,
-      runValidators: true,
-    },
-  );
+  try {
+    let item;
 
-  if (!order) {
-    return res.status(404).json({ message: 'Item nao encontrado' });
+    await session.withTransaction(async () => {
+      const order = await Order.findOne({
+        workspaceId,
+        _id: orderId,
+        'items._id': itemId,
+      }).session(session);
+
+      item = order?.items.id(itemId);
+
+      if (!order || !item) {
+        const error = new Error('Item nao encontrado');
+        error.status = 404;
+        throw error;
+      }
+
+      const previousStatus = item.status;
+      item.status = status;
+      await order.save({ session });
+
+      await writeAuditLog({
+        req,
+        action: 'orderItem.statusUpdated',
+        targetType: 'orderItem',
+        targetId: item._id,
+        changes: {
+          orderId,
+          itemId,
+          product: item.product,
+          status: {
+            from: previousStatus,
+            to: item.status,
+          },
+        },
+        session,
+      });
+    });
+
+    res.json({ item });
+  } catch (error) {
+    const responseStatus = error.status ?? 500;
+
+    res.status(responseStatus).json({
+      message: responseStatus < 500 ? error.message : 'Erro ao atualizar item',
+    });
+  } finally {
+    await session.endSession();
   }
-
-  res.json({ item: order.items.id(itemId) });
 };
 
 const deleteOrderItem = async (req, res) => {
@@ -316,6 +381,21 @@ const deleteOrderItem = async (req, res) => {
       const itemData = item.toObject();
 
       await removeOrderItem(order, itemId, session);
+
+      await writeAuditLog({
+        req,
+        action: 'orderItem.deleted',
+        targetType: 'orderItem',
+        targetId: itemData._id,
+        changes: {
+          orderId,
+          itemId,
+          studentId: order.studentId,
+          product: itemData.product,
+          status: itemData.status,
+        },
+        session,
+      });
 
       return itemData;
     });
@@ -439,6 +519,25 @@ const registerOrderItem = async (req, res) => {
         ],
         { session },
       );
+
+      await writeAuditLog({
+        req,
+        action: 'orderItem.register',
+        targetType: 'register',
+        targetId: register._id,
+        changes: {
+          registerId: register._id,
+          orderId,
+          itemId,
+          studentId: order.studentId,
+          product: register.product,
+          price,
+          paymentApplied,
+          balanceApplied,
+          payment: itemPayment,
+        },
+        session,
+      });
 
       await removeOrderItem(order, itemId, session);
     });

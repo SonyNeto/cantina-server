@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const SchoolClass = require('../models/schoolClass');
 const Shift = require('../models/shift');
+const { writeAuditLog } = require('../services/auditLogService');
 
 const fetchSchoolClass = async (req, res) => {
   const { workspaceId, shiftId, id } = req.params;
@@ -42,20 +44,49 @@ const fetchAllSchoolClasses = async (req, res) => {
 const postSchoolClass = async (req, res) => {
   const { label } = req.body;
   const { workspaceId, shiftId } = req.params;
+  const session = await mongoose.startSession();
 
-  const shiftExists = await Shift.exists({ workspaceId, _id: shiftId });
+  try {
+    let schoolClass;
 
-  if (!shiftExists) {
-    return res.status(400).json({ message: 'Turno não encontrado' });
+    await session.withTransaction(async () => {
+      const shiftExists = await Shift.exists({ workspaceId, _id: shiftId }).session(session);
+
+      if (!shiftExists) {
+        throw new Error('Turno nao encontrado');
+      }
+
+      [schoolClass] = await SchoolClass.create(
+        [
+          {
+            workspaceId,
+            label,
+            shiftId,
+          },
+        ],
+        { session },
+      );
+
+      await writeAuditLog({
+        req,
+        action: 'schoolClass.created',
+        targetType: 'schoolClass',
+        targetId: schoolClass._id,
+        changes: {
+          label: schoolClass.label,
+          shiftId: schoolClass.shiftId,
+          order: schoolClass.order,
+        },
+        session,
+      });
+    });
+
+    res.json({ schoolClass });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  } finally {
+    await session.endSession();
   }
-
-  const schoolClass = await SchoolClass.create({
-    workspaceId,
-    label,
-    shiftId,
-  });
-
-  res.json({ schoolClass });
 };
 
 module.exports = {

@@ -1,7 +1,9 @@
+const mongoose = require('mongoose');
 const WorkspaceInvite = require('../models/workspaceInvite');
 const Workspace = require('../models/workspace');
 const Membership = require('../models/membership');
 const crypto = require('node:crypto');
+const { writeAuditLog } = require('../services/auditLogService');
 
 function createTokenHash(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -9,26 +11,54 @@ function createTokenHash(token) {
 
 async function postWorkspaceInvite(req, res) {
   const workspaceId = req.params.workspaceId;
+  const session = await mongoose.startSession();
 
-  const token = crypto.randomBytes(32).toString('hex');
+  try {
+    const token = crypto.randomBytes(32).toString('hex');
 
-  const role = req.body.role;
+    const role = req.body.role;
 
-  const createdByUser = req.user;
+    const createdByUser = req.user;
 
-  const exp = Date.now() + 1000 * 60 * 60 * 24; // 24 hours
+    const exp = Date.now() + 1000 * 60 * 60 * 24; // 24 hours
+    let workspaceInvite;
 
-  await WorkspaceInvite.create({
-    workspaceId,
-    tokenHash: createTokenHash(token),
-    role,
-    createdByUserId: createdByUser._id,
-    expiresAt: new Date(exp),
-    usedAt: null,
-    usedByUserId: null,
-  });
+    await session.withTransaction(async () => {
+      [workspaceInvite] = await WorkspaceInvite.create(
+        [
+          {
+            workspaceId,
+            tokenHash: createTokenHash(token),
+            role,
+            createdByUserId: createdByUser._id,
+            expiresAt: new Date(exp),
+            usedAt: null,
+            usedByUserId: null,
+          },
+        ],
+        { session },
+      );
 
-  res.json({ token, role });
+      await writeAuditLog({
+        req,
+        action: 'workspaceInvite.created',
+        targetType: 'workspaceInvite',
+        targetId: workspaceInvite._id,
+        changes: {
+          role: workspaceInvite.role,
+          createdByUserId: workspaceInvite.createdByUserId,
+          expiresAt: workspaceInvite.expiresAt,
+        },
+        session,
+      });
+    });
+
+    res.json({ token, role });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function fetchWorkspaceInvite(req, res) {
@@ -56,45 +86,80 @@ async function fetchWorkspaceInvite(req, res) {
 async function postWorkspaceInviteResponse(req, res) {
   const user = req.user;
   const token = req.params.token;
+  const session = await mongoose.startSession();
 
-  const workspaceInvite = await WorkspaceInvite.findOneAndUpdate(
-    {
-      tokenHash: createTokenHash(token),
-      usedAt: null,
-      expiresAt: { $gt: new Date() },
-    },
-    {
-      usedAt: new Date(),
-      usedByUserId: user._id,
-    },
-    {
-      new: true,
-    },
-  );
+  try {
+    let workspaceInvite;
+    let membership;
 
-  if (!workspaceInvite) {
-    return res.sendStatus(404);
-  }
+    await session.withTransaction(async () => {
+      workspaceInvite = await WorkspaceInvite.findOneAndUpdate(
+        {
+          tokenHash: createTokenHash(token),
+          usedAt: null,
+          expiresAt: { $gt: new Date() },
+        },
+        {
+          usedAt: new Date(),
+          usedByUserId: user._id,
+        },
+        {
+          new: true,
+          session,
+        },
+      );
 
-  await Membership.findOneAndUpdate(
-    {
-      userId: user._id,
-      workspaceId: workspaceInvite.workspaceId,
-    },
-    {
-      $setOnInsert: {
-        userId: user._id,
+      if (!workspaceInvite) {
+        const error = new Error('Convite nao encontrado');
+        error.status = 404;
+        throw error;
+      }
+
+      membership = await Membership.findOneAndUpdate(
+        {
+          userId: user._id,
+          workspaceId: workspaceInvite.workspaceId,
+        },
+        {
+          $setOnInsert: {
+            userId: user._id,
+            workspaceId: workspaceInvite.workspaceId,
+            role: workspaceInvite.role,
+          },
+        },
+        {
+          upsert: true,
+          new: true,
+          session,
+        },
+      );
+
+      await writeAuditLog({
+        req,
         workspaceId: workspaceInvite.workspaceId,
-        role: workspaceInvite.role,
-      },
-    },
-    {
-      upsert: true,
-      new: true,
-    },
-  );
+        actorRole: membership.role,
+        action: 'workspaceInvite.accepted',
+        targetType: 'workspaceInvite',
+        targetId: workspaceInvite._id,
+        changes: {
+          role: workspaceInvite.role,
+          usedByUserId: user._id,
+          membershipId: membership._id,
+        },
+        session,
+      });
+    });
 
-  res.sendStatus(200);
+    res.sendStatus(200);
+  } catch (error) {
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao aceitar convite',
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 module.exports = {

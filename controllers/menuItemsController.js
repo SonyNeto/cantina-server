@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const MenuItem = require('../models/menuItem');
+const { writeAuditLog } = require('../services/auditLogService');
 
 function isPositiveCents(value) {
   return Number.isSafeInteger(value) && value > 0;
@@ -44,46 +46,136 @@ const fetchMenuItems = async (req, res) => {
 const postMenuItem = async (req, res) => {
   const { label, price } = req.body;
   const { workspaceId } = req.params;
+  const session = await mongoose.startSession();
 
-  if (!isPositiveCents(price)) {
-    return res.status(400).json({ message: 'O preco deve ser informado em centavos' });
+  try {
+    if (!isPositiveCents(price)) {
+      throw new Error('O preco deve ser informado em centavos');
+    }
+
+    let menuItem;
+
+    await session.withTransaction(async () => {
+      [menuItem] = await MenuItem.create(
+        [
+          {
+            workspaceId,
+            label,
+            price,
+          },
+        ],
+        { session },
+      );
+
+      await writeAuditLog({
+        req,
+        action: 'menuItem.created',
+        targetType: 'menuItem',
+        targetId: menuItem._id,
+        changes: {
+          label: menuItem.label,
+          price: menuItem.price,
+        },
+        session,
+      });
+    });
+
+    res.json({ menuItem });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  } finally {
+    await session.endSession();
   }
-
-  const menuItem = await MenuItem.create({
-    workspaceId,
-    label,
-    price,
-  });
-
-  res.json({ menuItem });
 };
 
 const updateMenuItem = async (req, res) => {
   const { workspaceId, id } = req.params;
   const { label, price } = req.body;
+  const session = await mongoose.startSession();
 
-  if (!isPositiveCents(price)) {
-    return res.status(400).json({ message: 'O preco deve ser informado em centavos' });
+  try {
+    if (!isPositiveCents(price)) {
+      throw new Error('O preco deve ser informado em centavos');
+    }
+
+    let menuItem;
+
+    await session.withTransaction(async () => {
+      const previous = await MenuItem.findOne({ workspaceId, _id: id }).session(session);
+
+      if (!previous) {
+        throw new Error('Produto nao encontrado');
+      }
+
+      menuItem = await MenuItem.findOneAndUpdate(
+        { workspaceId, _id: id },
+        {
+          label,
+          price,
+        },
+        { new: true, runValidators: true, session },
+      );
+
+      await writeAuditLog({
+        req,
+        action: 'menuItem.updated',
+        targetType: 'menuItem',
+        targetId: menuItem._id,
+        changes: {
+          label: {
+            from: previous.label,
+            to: menuItem.label,
+          },
+          price: {
+            from: previous.price,
+            to: menuItem.price,
+          },
+        },
+        session,
+      });
+    });
+
+    res.json({ menuItem });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  } finally {
+    await session.endSession();
   }
-
-  const menuItem = await MenuItem.findOneAndUpdate(
-    { workspaceId, _id: id },
-    {
-      label,
-      price,
-    },
-    { new: true, runValidators: true },
-  );
-
-  res.json({ menuItem });
 };
 
 const deleteMenuItem = async (req, res) => {
   const { workspaceId, id } = req.params;
+  const session = await mongoose.startSession();
 
-  const menuItem = await MenuItem.findOneAndDelete({ workspaceId, _id: id });
+  try {
+    let menuItem;
 
-  res.json({ menuItem });
+    await session.withTransaction(async () => {
+      menuItem = await MenuItem.findOneAndDelete({ workspaceId, _id: id }).session(session);
+
+      if (!menuItem) {
+        throw new Error('Produto nao encontrado');
+      }
+
+      await writeAuditLog({
+        req,
+        action: 'menuItem.deleted',
+        targetType: 'menuItem',
+        targetId: menuItem._id,
+        changes: {
+          label: menuItem.label,
+          price: menuItem.price,
+        },
+        session,
+      });
+    });
+
+    res.json({ menuItem });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  } finally {
+    await session.endSession();
+  }
 };
 
 module.exports = {
