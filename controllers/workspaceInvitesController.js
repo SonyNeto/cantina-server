@@ -4,6 +4,7 @@ const Workspace = require('../models/workspace');
 const Membership = require('../models/membership');
 const crypto = require('node:crypto');
 const { writeAuditLog } = require('../services/auditLogService');
+const { appError } = require('../utils/functions');
 
 function createTokenHash(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -55,7 +56,11 @@ async function postWorkspaceInvite(req, res) {
 
     res.json({ token, role });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar convite',
+    });
   } finally {
     await session.endSession();
   }
@@ -110,9 +115,7 @@ async function postWorkspaceInviteResponse(req, res) {
       );
 
       if (!workspaceInvite) {
-        const error = new Error('Convite nao encontrado');
-        error.status = 404;
-        throw error;
+        throw appError('Convite nao encontrado', 404);
       }
 
       membership = await Membership.findOneAndUpdate(

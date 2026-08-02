@@ -4,6 +4,7 @@ const SchoolClass = require('../models/schoolClass');
 const Student = require('../models/student');
 const Responsible = require('../models/responsible');
 const Shift = require('../models/shift');
+const { appError } = require('../utils/functions');
 
 function getPeriodFilter(query) {
   const now = new Date();
@@ -11,14 +12,14 @@ function getPeriodFilter(query) {
   const period = query.p ?? `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   if (!/^\d{6}$/.test(period)) {
-    throw new Error('Periodo invalido');
+    throw appError('Periodo invalido');
   }
 
   const year = Number(period.slice(0, 4));
   const month = Number(period.slice(4, 6));
 
   if (month < 1 || month > 12) {
-    throw new Error('Periodo invalido');
+    throw appError('Periodo invalido');
   }
 
   return {
@@ -155,7 +156,7 @@ const fetchRegistersByStudent = async (req, res) => {
   const limit = Number(req.query.limit);
 
   if (!page || !limit) {
-    return res.sendStatus(400);
+    return res.status(400).json({ message: 'Paginacao invalida' });
   }
 
   const periodFilter = getPeriodFilter(req.query);
@@ -211,7 +212,7 @@ const fetchRegistersByResponsible = async (req, res) => {
   const limit = Number(req.query.limit);
 
   if (!page || !limit) {
-    return res.sendStatus(400);
+    return res.status(400).json({ message: 'Paginacao invalida' });
   }
 
   const periodFilter = getPeriodFilter(req.query);

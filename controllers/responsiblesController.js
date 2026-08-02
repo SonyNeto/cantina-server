@@ -4,6 +4,7 @@ const Student = require('../models/student');
 const Register = require('../models/register');
 const Order = require('../models/order');
 const { writeAuditLog } = require('../services/auditLogService');
+const { appError } = require('../utils/functions');
 
 const fetchResponsible = async (req, res) => {
   const { workspaceId, id } = req.params;
@@ -54,7 +55,11 @@ const postResponsible = async (req, res) => {
 
     res.json({ responsible });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar responsavel',
+    });
   } finally {
     await session.endSession();
   }
@@ -72,7 +77,7 @@ const updateResponsible = async (req, res) => {
       const previous = await Responsible.findOne({ workspaceId, _id: id }).session(session);
 
       if (!previous) {
-        throw new Error('Responsavel nao encontrado');
+        throw appError('Responsavel nao encontrado', 404);
       }
 
       responsible = await Responsible.findOneAndUpdate(
@@ -100,7 +105,11 @@ const updateResponsible = async (req, res) => {
 
     res.json({ responsible });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao atualizar responsavel',
+    });
   } finally {
     await session.endSession();
   }
@@ -117,7 +126,7 @@ const deleteResponsible = async (req, res) => {
       );
 
       if (!responsible) {
-        throw new Error('Responsavel nao encontrado');
+        throw appError('Responsavel nao encontrado', 404);
       }
 
       const students = await Student.find({ workspaceId, responsibleId }).session(session);
@@ -153,7 +162,11 @@ const deleteResponsible = async (req, res) => {
 
     res.sendStatus(200);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao deletar responsavel',
+    });
   } finally {
     await session.endSession();
   }

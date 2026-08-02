@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const MenuItem = require('../models/menuItem');
 const { writeAuditLog } = require('../services/auditLogService');
+const { appError } = require('../utils/functions');
 
 function isPositiveCents(value) {
   return Number.isSafeInteger(value) && value > 0;
@@ -50,7 +51,7 @@ const postMenuItem = async (req, res) => {
 
   try {
     if (!isPositiveCents(price)) {
-      throw new Error('O preco deve ser informado em centavos');
+      throw appError('O preco deve ser informado em centavos');
     }
 
     let menuItem;
@@ -82,7 +83,11 @@ const postMenuItem = async (req, res) => {
 
     res.json({ menuItem });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar produto',
+    });
   } finally {
     await session.endSession();
   }
@@ -95,7 +100,7 @@ const updateMenuItem = async (req, res) => {
 
   try {
     if (!isPositiveCents(price)) {
-      throw new Error('O preco deve ser informado em centavos');
+      throw appError('O preco deve ser informado em centavos');
     }
 
     let menuItem;
@@ -104,7 +109,7 @@ const updateMenuItem = async (req, res) => {
       const previous = await MenuItem.findOne({ workspaceId, _id: id }).session(session);
 
       if (!previous) {
-        throw new Error('Produto nao encontrado');
+        throw appError('Produto nao encontrado', 404);
       }
 
       menuItem = await MenuItem.findOneAndUpdate(
@@ -137,7 +142,11 @@ const updateMenuItem = async (req, res) => {
 
     res.json({ menuItem });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao atualizar produto',
+    });
   } finally {
     await session.endSession();
   }
@@ -154,7 +163,7 @@ const deleteMenuItem = async (req, res) => {
       menuItem = await MenuItem.findOneAndDelete({ workspaceId, _id: id }).session(session);
 
       if (!menuItem) {
-        throw new Error('Produto nao encontrado');
+        throw appError('Produto nao encontrado', 404);
       }
 
       await writeAuditLog({
@@ -172,7 +181,11 @@ const deleteMenuItem = async (req, res) => {
 
     res.json({ menuItem });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao deletar produto',
+    });
   } finally {
     await session.endSession();
   }

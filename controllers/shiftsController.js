@@ -51,7 +51,11 @@ const postShift = async (req, res) => {
 
     res.json({ shift });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar turno',
+    });
   } finally {
     await session.endSession();
   }

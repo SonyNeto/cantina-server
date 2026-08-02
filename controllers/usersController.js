@@ -20,7 +20,7 @@ async function signup(req, res) {
 
     res.sendStatus(200);
   } catch {
-    res.sendStatus(400);
+    res.status(500).json({ message: 'Erro ao cadastrar usuario' });
   }
 }
 
@@ -44,7 +44,7 @@ async function login(req, res) {
 
     res.sendStatus(200);
   } catch {
-    res.sendStatus(400);
+    res.status(500).json({ message: 'Erro ao fazer login' });
   }
 }
 
@@ -54,7 +54,7 @@ function logout(req, res) {
 
     res.sendStatus(200);
   } catch {
-    res.sendStatus(400);
+    res.status(500).json({ message: 'Erro ao sair' });
   }
 }
 
@@ -62,7 +62,7 @@ function checkAuth(req, res) {
   try {
     res.sendStatus(200);
   } catch {
-    res.sendStatus(400);
+    res.status(500).json({ message: 'Erro ao verificar autenticacao' });
   }
 }
 

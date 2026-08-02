@@ -6,6 +6,7 @@ const Student = require('../models/student');
 const Responsible = require('../models/responsible');
 const SchoolClass = require('../models/schoolClass');
 const { writeAuditLog } = require('../services/auditLogService');
+const { appError } = require('../utils/functions');
 
 const ORDER_STATUS = {
   COOKING: 'cooking',
@@ -42,9 +43,7 @@ async function finishOrder(order, session) {
     }).session(session);
 
     if (!student) {
-      const error = new Error('Aluno nao encontrado');
-      error.status = 404;
-      throw error;
+      throw appError('Aluno nao encontrado', 404);
     }
 
     const balanceUpdate = await Responsible.updateOne(
@@ -64,9 +63,7 @@ async function finishOrder(order, session) {
     );
 
     if (balanceUpdate.matchedCount === 0) {
-      const error = new Error('Responsavel nao encontrado');
-      error.status = 404;
-      throw error;
+      throw appError('Responsavel nao encontrado', 404);
     }
   }
 
@@ -214,29 +211,29 @@ const postOrder = async (req, res) => {
 
   try {
     if (details !== undefined && typeof details !== 'string') {
-      throw new Error('A observação deve ser um texto');
+      throw appError('A observação deve ser um texto');
     }
 
     const normalizedDetails = details?.trim();
     if (normalizedDetails && normalizedDetails.length > 100) {
-      throw new Error('A observação deve ter no máximo 100 caracteres');
+      throw appError('A observação deve ter no máximo 100 caracteres');
     }
 
     const studentExists = await Student.exists({ workspaceId, _id: studentId });
     if (!studentExists) {
-      throw new Error('Aluno nao encontrado');
+      throw appError('Aluno nao encontrado', 404);
     }
 
     if (!Array.isArray(items) || items.length === 0) {
-      throw new Error('Pedido precisa ter pelo menos um item');
+      throw appError('Pedido precisa ter pelo menos um item');
     }
 
     if (!Number.isSafeInteger(payment) || payment < 0) {
-      throw new Error('O pagamento deve ser informado em centavos');
+      throw appError('O pagamento deve ser informado em centavos');
     }
 
     if (typeof keepChange !== 'boolean') {
-      throw new Error('A opção de manter o troco é inválida');
+      throw appError('A opção de manter o troco é inválida');
     }
 
     let order;
@@ -249,7 +246,7 @@ const postOrder = async (req, res) => {
         );
 
         if (!product) {
-          throw new Error('Produto nao encontrado');
+          throw appError('Produto nao encontrado', 404);
         }
 
         itemsToCreate.push({
@@ -296,7 +293,11 @@ const postOrder = async (req, res) => {
 
     res.json({ order });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    return res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar pedido',
+    });
   } finally {
     await session.endSession();
   }
@@ -305,11 +306,12 @@ const postOrder = async (req, res) => {
 const updateOrderItemStatus = async (req, res) => {
   const { workspaceId, orderId, itemId } = req.params;
   const { status } = req.body;
-  const session = await mongoose.startSession();
 
   if (!isValidOrderStatus(status)) {
     return res.status(400).json({ message: 'Status de item invalido' });
   }
+
+  const session = await mongoose.startSession();
 
   try {
     let item;
@@ -324,9 +326,7 @@ const updateOrderItemStatus = async (req, res) => {
       item = order?.items.id(itemId);
 
       if (!order || !item) {
-        const error = new Error('Item nao encontrado');
-        error.status = 404;
-        throw error;
+        throw appError('Item nao encontrado', 404);
       }
 
       const previousStatus = item.status;
@@ -373,9 +373,7 @@ const deleteOrderItem = async (req, res) => {
       const item = order?.items.id(itemId);
 
       if (!order || !item) {
-        const error = new Error('Item nao encontrado');
-        error.status = 404;
-        throw error;
+        throw appError('Item nao encontrado', 404);
       }
 
       const itemData = item.toObject();
@@ -432,23 +430,17 @@ const registerOrderItem = async (req, res) => {
       }).session(session);
 
       if (register) {
-        const error = new Error('Item ja registrado');
-        error.status = 409;
-        throw error;
+        throw appError('Item ja registrado', 409);
       }
 
       const item = order?.items.id(itemId);
 
       if (!order || !item) {
-        const error = new Error('Item nao encontrado');
-        error.status = 404;
-        throw error;
+        throw appError('Item nao encontrado', 404);
       }
 
       if (item.status !== ORDER_STATUS.READY) {
-        const error = new Error('Item ainda nao esta pronto');
-        error.status = 400;
-        throw error;
+        throw appError('Item ainda nao esta pronto', 400);
       }
 
       const student = await Student.findOne({
@@ -457,9 +449,7 @@ const registerOrderItem = async (req, res) => {
       }).session(session);
 
       if (!student) {
-        const error = new Error('Aluno nao encontrado');
-        error.status = 404;
-        throw error;
+        throw appError('Aluno nao encontrado', 404);
       }
 
       const responsible = await Responsible.findOne({
@@ -468,9 +458,7 @@ const registerOrderItem = async (req, res) => {
       }).session(session);
 
       if (!responsible) {
-        const error = new Error('Responsavel nao encontrado');
-        error.status = 404;
-        throw error;
+        throw appError('Responsavel nao encontrado', 404);
       }
 
       const price = item.product.price;
@@ -500,9 +488,7 @@ const registerOrderItem = async (req, res) => {
         );
 
         if (balanceUpdate.matchedCount === 0) {
-          const error = new Error('Saldo insuficiente');
-          error.status = 409;
-          throw error;
+          throw appError('Saldo insuficiente', 409);
         }
       }
 

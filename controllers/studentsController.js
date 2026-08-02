@@ -4,6 +4,7 @@ const Responsible = require('../models/responsible');
 const Register = require('../models/register');
 const Order = require('../models/order');
 const { writeAuditLog } = require('../services/auditLogService');
+const { appError } = require('../utils/functions');
 
 const fetchStudent = async (req, res) => {
   const { workspaceId, responsibleId, id } = req.params;
@@ -52,7 +53,7 @@ const postStudent = async (req, res) => {
       }).session(session);
 
       if (!responsibleExists) {
-        throw new Error('Responsavel nao encontrado');
+        throw appError('Responsavel nao encontrado', 404);
       }
 
       [student] = await Student.create(
@@ -83,7 +84,11 @@ const postStudent = async (req, res) => {
 
     res.json({ student });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar aluno',
+    });
   } finally {
     await session.endSession();
   }
@@ -103,7 +108,7 @@ const updateStudent = async (req, res) => {
       );
 
       if (!previous) {
-        throw new Error('Aluno nao encontrado');
+        throw appError('Aluno nao encontrado', 404);
       }
 
       student = await Student.findOneAndUpdate(
@@ -136,7 +141,11 @@ const updateStudent = async (req, res) => {
 
     res.json({ student });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao atualizar aluno',
+    });
   } finally {
     await session.endSession();
   }
@@ -153,7 +162,7 @@ const deleteStudent = async (req, res) => {
       );
 
       if (!student) {
-        throw new Error('Aluno nao encontrado');
+        throw appError('Aluno nao encontrado', 404);
       }
 
       const registerCount = await Register.countDocuments({ workspaceId, studentId }).session(
@@ -185,7 +194,11 @@ const deleteStudent = async (req, res) => {
 
     res.sendStatus(200);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao deletar aluno',
+    });
   } finally {
     await session.endSession();
   }

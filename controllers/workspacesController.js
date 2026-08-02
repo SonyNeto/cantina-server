@@ -102,7 +102,11 @@ async function postWorkspace(req, res) {
 
     res.json({ workspace, membership });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar workspace',
+    });
   } finally {
     await session.endSession();
   }
@@ -112,7 +116,7 @@ function workspaceCheckAccess(req, res) {
   try {
     res.sendStatus(200);
   } catch {
-    res.sendStatus(400);
+    res.status(500).json({ message: 'Erro ao verificar workspace' });
   }
 }
 

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const SchoolClass = require('../models/schoolClass');
 const Shift = require('../models/shift');
 const { writeAuditLog } = require('../services/auditLogService');
+const { appError } = require('../utils/functions');
 
 const fetchSchoolClass = async (req, res) => {
   const { workspaceId, shiftId, id } = req.params;
@@ -53,7 +54,7 @@ const postSchoolClass = async (req, res) => {
       const shiftExists = await Shift.exists({ workspaceId, _id: shiftId }).session(session);
 
       if (!shiftExists) {
-        throw new Error('Turno nao encontrado');
+        throw appError('Turno nao encontrado', 404);
       }
 
       [schoolClass] = await SchoolClass.create(
@@ -83,7 +84,11 @@ const postSchoolClass = async (req, res) => {
 
     res.json({ schoolClass });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao criar turma',
+    });
   } finally {
     await session.endSession();
   }
