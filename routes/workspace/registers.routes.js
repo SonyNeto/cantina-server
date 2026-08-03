@@ -20,4 +20,9 @@ router.get(
   requireWorkspaceAdmin,
   registersController.fetchRegistersByResponsible,
 );
+router.patch(
+  '/registers/:id/payment',
+  requireWorkspaceAdmin,
+  registersController.updateRegisterPayment,
+);
 module.exports = router;

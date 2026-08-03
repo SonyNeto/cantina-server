@@ -5,6 +5,7 @@ const Student = require('../models/student');
 const Responsible = require('../models/responsible');
 const Shift = require('../models/shift');
 const { appError } = require('../utils/functions');
+const { writeAuditLog } = require('../services/auditLogService');
 
 function getPeriodFilter(query) {
   const now = new Date();
@@ -302,6 +303,65 @@ const fetchRegistersByResponsible = async (req, res) => {
   res.json({ responsibleTotals, pagination });
 };
 
+const updateRegisterPayment = async (req, res) => {
+  const { workspaceId, id } = req.params;
+  const { paid } = req.body;
+
+  if (typeof paid !== 'boolean') {
+    return res.status(400).json({ message: 'Status de pagamento invalido' });
+  }
+
+  const session = await mongoose.startSession();
+
+  try {
+    let register;
+
+    await session.withTransaction(async () => {
+      register = await Register.findOne({
+        workspaceId,
+        _id: id,
+      }).session(session);
+
+      if (!register) {
+        throw appError('Registro não encontrado', 404);
+      }
+
+      const previousPayment = register.payment;
+      const payment = paid ? register.product.price : 0;
+      register.payment = payment;
+      await register.save({ session });
+
+      await writeAuditLog({
+        req,
+        workspaceId,
+        action: 'register.updatePayment',
+        targetType: 'register',
+        targetId: register._id,
+        changes: {
+          registerId: register._id,
+          studentId: register.studentId,
+          product: register.product,
+          payment: {
+            from: previousPayment,
+            to: payment,
+          },
+        },
+        session,
+      });
+    });
+
+    return res.json({ register });
+  } catch (error) {
+    const responseStatus = error.status ?? 500;
+
+    res.status(responseStatus).json({
+      message: responseStatus < 500 ? error.message : 'Erro ao atualizar registro',
+    });
+  } finally {
+    await session.endSession();
+  }
+}
+
 module.exports = {
   fetchRegister,
   fetchResponsiblesRegisters,
@@ -309,4 +369,5 @@ module.exports = {
   fetchRegistersSummary,
   fetchRegistersByStudent,
   fetchRegistersByResponsible,
+  updateRegisterPayment,
 };
