@@ -360,7 +360,7 @@ const updateRegisterPayment = async (req, res) => {
   } finally {
     await session.endSession();
   }
-}
+};
 
 module.exports = {
   fetchRegister,

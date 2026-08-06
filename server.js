@@ -1,5 +1,7 @@
 if (process.env.NODE_ENV != 'production') {
-  require('dotenv').config();
+  require('dotenv').config({
+    path: process.env.APP_ENV === 'prod' ? '.env.prod' : '.env.dev',
+  });
 }
 
 const express = require('express');

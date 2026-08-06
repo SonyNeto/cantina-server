@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon server.js",
+    "dev": "cross-env APP_ENV=dev nodemon server.js",
+    "prod": "cross-env APP_ENV=prod node server.js",
+    "seed": "node scripts/seed.js",
     "migrate": "node migrations/003-add-balance-to-responsibles.js",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "cross-env": "^10.1.0",
     "eslint": "^10.6.0",
     "globals": "^17.7.0",
     "prettier": "^3.9.4"
