@@ -1,5 +1,5 @@
 if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
+  require('dotenv').config({ path: '.env.prod' });
 }
 const fs = require('node:fs');
 const child_process = require('node:child_process');
