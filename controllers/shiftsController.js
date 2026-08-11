@@ -12,10 +12,30 @@ const fetchShift = async (req, res) => {
 
 const fetchShifts = async (req, res) => {
   const { workspaceId } = req.params;
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
 
-  const shifts = await Shift.find({ workspaceId });
+  let shiftsQuery = Shift.find({ workspaceId }).sort({ _id: 1 });
+  let pagination = null;
 
-  res.json({ shifts });
+  if (page && limit) {
+    shiftsQuery = shiftsQuery.skip((page - 1) * limit).limit(limit);
+
+    const numberOfShifts = await Shift.countDocuments({ workspaceId });
+
+    const totalPages = Math.ceil(numberOfShifts / limit);
+    const nextPage = page < totalPages ? page + 1 : null;
+
+    pagination = {
+      page,
+      totalPages,
+      nextPage,
+    };
+  }
+
+  const shifts = await shiftsQuery;
+
+  res.json({ shifts, pagination });
 };
 
 const postShift = async (req, res) => {
