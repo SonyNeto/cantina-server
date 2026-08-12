@@ -29,12 +29,42 @@ const fetchSchoolClasses = async (req, res) => {
 
 const fetchAllSchoolClasses = async (req, res) => {
   const { workspaceId } = req.params;
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
+  const search = req.query.search;
 
-  const schoolClasses = await SchoolClass.find({ workspaceId }).sort({
+  const filter = { workspaceId };
+
+  if (search) {
+    filter.label = {
+      $regex: search,
+      $options: 'i',
+    };
+  }
+
+  let schoolClassesQuery = SchoolClass.find(filter).sort({
     shiftId: 1,
     order: 1,
     label: 1,
+    _id: 1,
   });
+  let pagination = null;
+
+  if (page && limit) {
+    schoolClassesQuery = schoolClassesQuery.skip((page - 1) * limit).limit(limit);
+
+    const numberOfSchoolClasses = await SchoolClass.countDocuments(filter);
+    const totalPages = Math.ceil(numberOfSchoolClasses / limit);
+    const nextPage = page < totalPages ? page + 1 : null;
+
+    pagination = {
+      page,
+      totalPages,
+      nextPage,
+    };
+  }
+
+  const schoolClasses = await schoolClassesQuery;
   const shiftIds = schoolClasses.map((schoolClass) => schoolClass.shiftId);
   const shifts = await Shift.find({ workspaceId, _id: { $in: shiftIds } });
   const shiftsById = new Map(shifts.map((shift) => [shift._id.toString(), shift]));
@@ -43,7 +73,7 @@ const fetchAllSchoolClasses = async (req, res) => {
     shiftLabel: shiftsById.get(schoolClass.shiftId.toString())?.label ?? '',
   }));
 
-  res.json({ schoolClasses: schoolClassesWithShift });
+  res.json({ schoolClasses: schoolClassesWithShift, pagination });
 };
 
 const postSchoolClass = async (req, res) => {

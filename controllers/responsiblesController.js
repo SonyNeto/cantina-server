@@ -16,10 +16,39 @@ const fetchResponsible = async (req, res) => {
 
 const fetchResponsibles = async (req, res) => {
   const { workspaceId } = req.params;
+  const page = Number(req.query.page);
+  const limit = Number(req.query.limit);
+  const search = req.query.search;
 
-  const responsibles = await Responsible.find({ workspaceId });
+  const filter = { workspaceId };
 
-  res.json({ responsibles });
+  if (search) {
+    filter.name = {
+      $regex: search,
+      $options: 'i',
+    };
+  }
+
+  let responsiblesQuery = Responsible.find(filter).sort({ name: 1, _id: 1 });
+  let pagination = null;
+
+  if (page && limit) {
+    responsiblesQuery = responsiblesQuery.skip((page - 1) * limit).limit(limit);
+
+    const numberOfResponsibles = await Responsible.countDocuments(filter);
+    const totalPages = Math.ceil(numberOfResponsibles / limit);
+    const nextPage = page < totalPages ? page + 1 : null;
+
+    pagination = {
+      page,
+      totalPages,
+      nextPage,
+    };
+  }
+
+  const responsibles = await responsiblesQuery;
+
+  res.json({ responsibles, pagination });
 };
 
 const postResponsible = async (req, res) => {
