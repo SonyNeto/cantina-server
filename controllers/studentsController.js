@@ -30,16 +30,16 @@ const fetchAllStudents = async (req, res) => {
   res.json({ students });
 };
 
-const fetchStudentsByClass = async (req, res) => {
-  const { workspaceId, classId } = req.params;
+const fetchStudentsBySchoolClass = async (req, res) => {
+  const { workspaceId, schoolClassId } = req.params;
 
-  const students = await Student.find({ workspaceId, classId });
+  const students = await Student.find({ workspaceId, schoolClassId });
 
   res.json({ students });
 };
 
 const postStudent = async (req, res) => {
-  const { name, classId } = req.body;
+  const { name, schoolClassId } = req.body;
   const { workspaceId, responsibleId } = req.params;
   const session = await mongoose.startSession();
 
@@ -61,7 +61,7 @@ const postStudent = async (req, res) => {
           {
             workspaceId,
             name,
-            classId,
+            schoolClassId,
             responsibleId,
           },
         ],
@@ -75,7 +75,7 @@ const postStudent = async (req, res) => {
         targetId: student._id,
         changes: {
           name: student.name,
-          classId: student.classId,
+          schoolClassId: student.schoolClassId,
           responsibleId: student.responsibleId,
         },
         session,
@@ -96,7 +96,7 @@ const postStudent = async (req, res) => {
 
 const updateStudent = async (req, res) => {
   const { workspaceId, responsibleId, id } = req.params;
-  const { name, classId } = req.body;
+  const { name, schoolClassId } = req.body;
   const session = await mongoose.startSession();
 
   try {
@@ -115,7 +115,7 @@ const updateStudent = async (req, res) => {
         { workspaceId, responsibleId, _id: id },
         {
           name,
-          classId,
+          schoolClassId,
         },
         { new: true, runValidators: true, session },
       );
@@ -130,9 +130,9 @@ const updateStudent = async (req, res) => {
             from: previous.name,
             to: student.name,
           },
-          classId: {
-            from: previous.classId,
-            to: student.classId,
+          schoolClassId: {
+            from: previous.schoolClassId,
+            to: student.schoolClassId,
           },
         },
         session,
@@ -183,7 +183,7 @@ const deleteStudent = async (req, res) => {
         targetId: student._id,
         changes: {
           name: student.name,
-          classId: student.classId,
+          schoolClassId: student.schoolClassId,
           responsibleId: student.responsibleId,
           orderCount,
           registerCount,
@@ -208,7 +208,7 @@ module.exports = {
   fetchStudent,
   fetchStudents,
   fetchAllStudents,
-  fetchStudentsByClass,
+  fetchStudentsBySchoolClass,
   postStudent,
   updateStudent,
   deleteStudent,

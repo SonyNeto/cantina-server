@@ -266,7 +266,7 @@ const fetchRegistersByResponsible = async (req, res) => {
   const shiftsById = new Map(shifts.map((shift) => [shift._id.toString(), shift]));
 
   const studentsTotals = students.map((student) => {
-    const schoolClassId = student.classId.toString();
+    const schoolClassId = student.schoolClassId.toString();
     const schoolClassLabel = schoolClassesById.get(schoolClassId)?.label || '';
     const schoolClassShift = shiftsById.get(
       (schoolClassesById.get(schoolClassId)?.shiftId || '').toString(),

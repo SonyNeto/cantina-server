@@ -5,7 +5,7 @@ if (process.env.NODE_ENV !== 'production') {
 const mongoose = require('mongoose');
 const SchoolClass = require('../models/schoolClass');
 
-const classOrders = [
+const schoolClassOrders = [
   { shiftId: 'morning', id: 'class-inf-2-morning', order: 1 },
   { shiftId: 'morning', id: 'class-inf-3-morning', order: 2 },
   { shiftId: 'morning', id: 'class-inf-4-morning', order: 3 },
@@ -28,7 +28,7 @@ const classOrders = [
 async function run() {
   await mongoose.connect(process.env.DB_URL);
 
-  for (const schoolClass of classOrders) {
+  for (const schoolClass of schoolClassOrders) {
     const res = await SchoolClass.updateOne(
       {
         id: schoolClass.id,

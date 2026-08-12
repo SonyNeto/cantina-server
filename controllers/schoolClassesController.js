@@ -5,9 +5,13 @@ const { writeAuditLog } = require('../services/auditLogService');
 const { appError } = require('../utils/functions');
 
 const fetchSchoolClass = async (req, res) => {
-  const { workspaceId, shiftId, id } = req.params;
+  const { workspaceId, shiftId, schoolClassId } = req.params;
 
-  const schoolClass = await SchoolClass.findOne({ workspaceId, shiftId, _id: id });
+  const schoolClass = await SchoolClass.findOne({
+    workspaceId,
+    shiftId,
+    _id: schoolClassId,
+  });
 
   res.json({ schoolClass });
 };

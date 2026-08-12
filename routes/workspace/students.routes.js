@@ -13,7 +13,10 @@ router.get(
   requireWorkspaceAdmin,
   studentsController.fetchStudents,
 );
-router.get('/shifts/:shiftId/classes/:classId/students', studentsController.fetchStudentsByClass);
+router.get(
+  '/shifts/:shiftId/schoolClasses/:schoolClassId/students',
+  studentsController.fetchStudentsBySchoolClass,
+);
 router.post(
   '/responsibles/:responsibleId/students',
   requireWorkspaceAdmin,
