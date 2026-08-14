@@ -29,6 +29,7 @@ const fetchSchoolClasses = async (req, res) => {
 
 const fetchAllSchoolClasses = async (req, res) => {
   const { workspaceId } = req.params;
+  const shiftId = req.query.shiftId;
   const page = Number(req.query.page);
   const limit = Number(req.query.limit);
   const search = req.query.search;
@@ -40,6 +41,10 @@ const fetchAllSchoolClasses = async (req, res) => {
       $regex: search,
       $options: 'i',
     };
+  }
+
+  if (shiftId) {
+    filter.shiftId = shiftId;
   }
 
   let schoolClassesQuery = SchoolClass.find(filter).sort({

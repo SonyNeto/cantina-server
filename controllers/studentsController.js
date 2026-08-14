@@ -24,6 +24,7 @@ const fetchStudents = async (req, res) => {
 
 const fetchAllStudents = async (req, res) => {
   const { workspaceId } = req.params;
+  const responsibleId = req.query.responsibleId;
   const page = Number(req.query.page);
   const limit = Number(req.query.limit);
   const search = req.query.search;
@@ -35,6 +36,10 @@ const fetchAllStudents = async (req, res) => {
       $regex: search,
       $options: 'i',
     };
+  }
+
+  if (responsibleId) {
+    filter.responsibleId = responsibleId;
   }
 
   let studentsQuery = Student.find(filter).sort({ name: 1, _id: 1 });
