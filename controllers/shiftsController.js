@@ -14,14 +14,24 @@ const fetchShifts = async (req, res) => {
   const { workspaceId } = req.params;
   const page = Number(req.query.page);
   const limit = Number(req.query.limit);
+  const search = req.query.search;
 
-  let shiftsQuery = Shift.find({ workspaceId }).sort({ _id: 1 });
+  const filter = { workspaceId };
+
+  if (search) {
+    filter.label = {
+      $regex: search,
+      $options: 'i',
+    };
+  }
+
+  let shiftsQuery = Shift.find(filter).sort({ _id: 1 });
   let pagination = null;
 
   if (page && limit) {
     shiftsQuery = shiftsQuery.skip((page - 1) * limit).limit(limit);
 
-    const numberOfShifts = await Shift.countDocuments({ workspaceId });
+    const numberOfShifts = await Shift.countDocuments(filter);
 
     const totalPages = Math.ceil(numberOfShifts / limit);
     const nextPage = page < totalPages ? page + 1 : null;

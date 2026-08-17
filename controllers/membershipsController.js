@@ -4,8 +4,18 @@ const fetchMemberships = async (req, res) => {
   const { workspaceId } = req.params;
   const page = Number(req.query.page);
   const limit = Number(req.query.limit);
+  const search = req.query.search;
 
-  let membershipsQuery = Membership.find({ workspaceId })
+  const filter = { workspaceId };
+
+  if (search) {
+    filter.name = { // add name to membership?
+      $regex: search,
+      $options: 'i',
+    };
+  }
+
+  let membershipsQuery = Membership.find(filter)
     .sort({ role: 1 })
     .populate('userId', 'email');
 
@@ -14,7 +24,7 @@ const fetchMemberships = async (req, res) => {
   if (page && limit) {
     membershipsQuery = membershipsQuery.skip((page - 1) * limit).limit(limit);
 
-    const numberOfMenuItems = await Membership.countDocuments({ workspaceId });
+    const numberOfMenuItems = await Membership.countDocuments(filter);
 
     const totalPages = Math.ceil(numberOfMenuItems / limit);
     const nextPage = page < totalPages ? page + 1 : null;
