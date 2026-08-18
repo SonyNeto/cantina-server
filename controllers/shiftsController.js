@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
 const Shift = require('../models/shift');
+const SchoolClass = require('../models/schoolClass');
+const Student = require('../models/student');
 const { writeAuditLog } = require('../services/auditLogService');
+const { appError } = require('../utils/functions');
 
 const fetchShift = async (req, res) => {
   const { workspaceId, id } = req.params;
@@ -91,8 +94,57 @@ const postShift = async (req, res) => {
   }
 };
 
+const deleteShift = async (req, res) => {
+  const { workspaceId, id: shiftId } = req.params;
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      const shift = await Shift.findOne({ workspaceId, _id: shiftId }).session(session);
+
+      if (!shift) {
+        throw appError('Turno nao encontrado', 404);
+      }
+
+      const schoolClassIds = await SchoolClass.distinct('_id', { workspaceId, shiftId }).session(
+        session,
+      );
+      const students = await Student.find({ workspaceId, schoolClassId: { $in: schoolClassIds } });
+
+      if (students.length > 0) {
+        throw appError('Existem alunos cadastrados neste turno', 409);
+      }
+
+      await SchoolClass.deleteMany({ workspaceId, shiftId }, { session });
+      await Shift.findOneAndDelete({ workspaceId, _id: shiftId }).session(session);
+
+      await writeAuditLog({
+        req,
+        action: 'shift.deleted',
+        targetType: 'shift',
+        targetId: shift._id,
+        changes: {
+          label: shift.label,
+        },
+        session,
+      });
+    });
+
+    res.sendStatus(200);
+  } catch (error) {
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao deletar turno',
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
 module.exports = {
   fetchShift,
   fetchShifts,
   postShift,
+  deleteShift,
 };

@@ -9,15 +9,14 @@ const fetchMemberships = async (req, res) => {
   const filter = { workspaceId };
 
   if (search) {
-    filter.name = { // add name to membership?
+    filter.name = {
+      // add name to membership?
       $regex: search,
       $options: 'i',
     };
   }
 
-  let membershipsQuery = Membership.find(filter)
-    .sort({ role: 1 })
-    .populate('userId', 'email');
+  let membershipsQuery = Membership.find(filter).sort({ role: 1 }).populate('userId', 'email');
 
   let pagination = null;
 

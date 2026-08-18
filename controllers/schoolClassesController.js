@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const SchoolClass = require('../models/schoolClass');
 const Shift = require('../models/shift');
+const Student = require('../models/student');
 const { writeAuditLog } = require('../services/auditLogService');
 const { appError } = require('../utils/functions');
 
@@ -133,9 +134,60 @@ const postSchoolClass = async (req, res) => {
   }
 };
 
+const deleteSchoolClass = async (req, res) => {
+  const { workspaceId, shiftId, schoolClassId } = req.params;
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      const schoolClass = await SchoolClass.findOne({
+        workspaceId,
+        shiftId,
+        _id: schoolClassId,
+      }).session(session);
+
+      if (!schoolClass) {
+        throw appError('Turma nao encontrada', 404);
+      }
+
+      const students = await Student.find({ workspaceId, schoolClassId });
+
+      if (students.length > 0) {
+        throw appError('Existem alunos cadastrados nesta turma', 409);
+      }
+
+      await SchoolClass.findOneAndDelete({ workspaceId, shiftId, _id: schoolClassId }).session(
+        session,
+      );
+
+      await writeAuditLog({
+        req,
+        action: 'schoolClass.deleted',
+        targetType: 'schoolClass',
+        targetId: schoolClass._id,
+        changes: {
+          label: schoolClass.label,
+        },
+        session,
+      });
+    });
+
+    res.sendStatus(200);
+  } catch (error) {
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao deletar turma',
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
 module.exports = {
   fetchSchoolClass,
   fetchSchoolClasses,
   fetchAllSchoolClasses,
   postSchoolClass,
+  deleteSchoolClass,
 };

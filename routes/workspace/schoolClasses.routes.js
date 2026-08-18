@@ -13,5 +13,10 @@ router.post(
   requireWorkspaceAdmin,
   schoolClassesController.postSchoolClass,
 );
+router.delete(
+  '/shifts/:shiftId/schoolClasses/:schoolClassId',
+  requireWorkspaceAdmin,
+  schoolClassesController.deleteSchoolClass,
+);
 
 module.exports = router;
