@@ -59,6 +59,7 @@ const auditLogSchema = new mongoose.Schema({
 
 auditLogSchema.index({ workspaceId: 1, createdAt: -1 });
 auditLogSchema.index({ workspaceId: 1, action: 1, createdAt: -1 });
+auditLogSchema.index({ workspaceId: 1, 'target.type': 1, createdAt: -1 });
 auditLogSchema.index({
   workspaceId: 1,
   'target.type': 1,
