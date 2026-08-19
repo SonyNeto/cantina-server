@@ -219,8 +219,10 @@ const postOrder = async (req, res) => {
       throw appError('A observação deve ter no máximo 100 caracteres');
     }
 
-    const studentExists = await Student.exists({ workspaceId, _id: studentId });
-    if (!studentExists) {
+    const student = await Student.findOne({ workspaceId, _id: studentId })
+      .populate({ path: 'responsibleId', select: 'name' })
+      .lean();
+    if (!student) {
       throw appError('Aluno nao encontrado', 404);
     }
 
@@ -277,6 +279,8 @@ const postOrder = async (req, res) => {
         targetId: order._id,
         changes: {
           studentId: order.studentId,
+          studentName: student.name,
+          responsibleName: student.responsibleId?.name,
           created_at: order.created_at,
           payment: order.payment,
           keepChange: order.keepChange,
