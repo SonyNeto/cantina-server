@@ -10,6 +10,7 @@ const ordersRoutes = require('./workspace/orders.routes');
 const menuItemsRoutes = require('./workspace/menuItems.routes');
 const registersRoutes = require('./workspace/registers.routes');
 const auditLogsRoutes = require('./workspace/auditLogs.routes');
+const membershipsRoutes = require('./workspace/memberships.routes');
 
 router.get('/', workspacesController.fetchWorkspace);
 
@@ -22,5 +23,6 @@ router.use('/menu-items', menuItemsRoutes);
 router.use(registersRoutes);
 router.use(ordersRoutes);
 router.use('/audit-logs', auditLogsRoutes);
+router.use('/memberships', membershipsRoutes);
 
 module.exports = router;

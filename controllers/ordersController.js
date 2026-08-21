@@ -98,21 +98,21 @@ async function getOrdersWithDetails(workspaceId, status) {
 
   const studentIds = orders.map((order) => order.studentId);
   const students = await Student.find({ workspaceId, _id: { $in: studentIds } });
-  const classIds = students.map((student) => student.classId);
-  const schoolClasses = await SchoolClass.find({ workspaceId, _id: { $in: classIds } }).sort({
+  const schoolClassIds = students.map((student) => student.schoolClassId);
+  const schoolClasses = await SchoolClass.find({ workspaceId, _id: { $in: schoolClassIds } }).sort({
     shiftId: 1,
     order: 1,
     label: 1,
   });
 
   const studentsById = new Map(students.map((student) => [student._id.toString(), student]));
-  const classesById = new Map(
+  const schoolClassesById = new Map(
     schoolClasses.map((schoolClass) => [schoolClass._id.toString(), schoolClass]),
   );
 
   const ordersWithDetails = orders.map((order) => {
     const student = studentsById.get(order.studentId.toString());
-    const schoolClass = student ? classesById.get(student.classId.toString()) : null;
+    const schoolClass = student ? schoolClassesById.get(student.schoolClassId.toString()) : null;
 
     return {
       id: order._id.toString(),
@@ -154,10 +154,10 @@ async function getOrdersWithDetails(workspaceId, status) {
   const ordersBySchoolClass = ordersWithDetails.reduce((acc, order) => {
     if (!order.schoolClass || order.items.length === 0) return acc;
 
-    const schoolClass = order.schoolClass.id;
+    const schoolClassId = order.schoolClass.id;
 
-    acc[schoolClass] ??= [];
-    acc[schoolClass].push(order);
+    acc[schoolClassId] ??= [];
+    acc[schoolClassId].push(order);
 
     return acc;
   }, {});

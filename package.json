@@ -9,7 +9,7 @@
     "dev": "cross-env APP_ENV=dev nodemon server.js",
     "prod": "cross-env APP_ENV=prod node server.js",
     "seed": "node scripts/seed.js",
-    "migrate": "node migrations/003-add-balance-to-responsibles.js",
+    "migrate": "node migrations/004-rename-student-class-id.js",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

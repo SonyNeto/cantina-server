@@ -5,5 +5,6 @@ const shiftsController = require('../../controllers/shiftsController');
 router.get('/:id', shiftsController.fetchShift);
 router.get('/', shiftsController.fetchShifts);
 router.post('/', requireWorkspaceAdmin, shiftsController.postShift);
+router.delete('/:id', requireWorkspaceAdmin, shiftsController.deleteShift);
 
 module.exports = router;
