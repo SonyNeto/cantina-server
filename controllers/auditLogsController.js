@@ -5,7 +5,7 @@ const Student = require('../models/student');
 
 const TARGET_TYPES_BY_CATEGORY = {
   orders: ['order', 'orderItem'],
-  registers: ['register'],
+  registers: ['register', 'payment'],
   menuItems: ['menuItem'],
   workspace: [
     'workspace',

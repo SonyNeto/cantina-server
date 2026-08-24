@@ -18,6 +18,7 @@ const SchoolClass = require('../models/schoolClass');
 const MenuItem = require('../models/menuItem');
 const Order = require('../models/order');
 const Register = require('../models/register');
+const Payment = require('../models/payment');
 const Responsible = require('../models/responsible');
 const Student = require('../models/student');
 
@@ -31,6 +32,7 @@ async function seed() {
 
   try {
     await session.withTransaction(async () => {
+      await Payment.deleteMany({}, { session });
       await Register.deleteMany({}, { session });
       await Order.deleteMany({}, { session });
       await Student.deleteMany({}, { session });
