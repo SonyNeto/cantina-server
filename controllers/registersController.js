@@ -1,9 +1,7 @@
 const mongoose = require('mongoose');
 const Register = require('../models/register');
-const SchoolClass = require('../models/schoolClass');
 const Student = require('../models/student');
 const Responsible = require('../models/responsible');
-const Shift = require('../models/shift');
 const { appError } = require('../utils/functions');
 const { writeAuditLog } = require('../services/auditLogService');
 
@@ -209,13 +207,6 @@ const fetchRegistersByStudent = async (req, res) => {
 
 const fetchRegistersByResponsible = async (req, res) => {
   const { workspaceId, responsibleId } = req.params;
-  const page = Number(req.query.page);
-  const limit = Number(req.query.limit);
-
-  if (!page || !limit) {
-    return res.status(400).json({ message: 'Paginacao invalida' });
-  }
-
   const periodFilter = getPeriodFilter(req.query);
   const responsible = await Responsible.findOne({ workspaceId, _id: responsibleId });
 
@@ -223,62 +214,25 @@ const fetchRegistersByResponsible = async (req, res) => {
     return res.status(404).json({ message: 'Responsável não encontrado' });
   }
 
-  const responsibleName = responsible.name;
-  const balance = responsible.balance;
-  const studentsByResponsible = await Student.find({ workspaceId, responsibleId });
-  const studentIds = studentsByResponsible.map((student) => student._id);
+  const students = await Student.find({ workspaceId, responsibleId });
+  const studentIds = students.map((student) => student._id);
+  const studentsById = new Map(students.map((student) => [student._id.toString(), student]));
 
   const registers = await Register.find({
     workspaceId,
     ...periodFilter,
     studentId: { $in: studentIds },
-  });
+  }).sort({ created_at: -1, _id: -1 });
 
-  const numberOfStudents = await Student.countDocuments({ workspaceId, _id: { $in: studentIds } });
-  const totalPages = Math.ceil(numberOfStudents / limit);
-  const nextPage = page < totalPages ? page + 1 : null;
-
-  const totalsByStudentId = registers.reduce((acc, register) => {
-    const studentId = register.studentId.toString();
-    acc[studentId] = (acc[studentId] ?? 0) + register.product.price - register.payment;
-
-    return acc;
-  }, {});
-
-  const students = await Student.find({ workspaceId, _id: { $in: studentIds } })
-    .sort({ name: 1, _id: 1 })
-    .skip((page - 1) * limit)
-    .limit(limit);
-
-  const schoolClasses = await SchoolClass.find({ workspaceId }).sort({
-    shiftId: 1,
-    order: 1,
-    label: 1,
-  });
-  const schoolClassesById = new Map(
-    schoolClasses.map((schoolClass) => [schoolClass._id.toString(), schoolClass]),
-  );
-
-  const shiftsIds = schoolClasses.map((schoolClass) => schoolClass.shiftId);
-
-  const shifts = await Shift.find({ workspaceId, _id: { $in: shiftsIds } });
-
-  const shiftsById = new Map(shifts.map((shift) => [shift._id.toString(), shift]));
-
-  const studentsTotals = students.map((student) => {
-    const schoolClassId = student.schoolClassId.toString();
-    const schoolClassLabel = schoolClassesById.get(schoolClassId)?.label || '';
-    const schoolClassShift = shiftsById.get(
-      (schoolClassesById.get(schoolClassId)?.shiftId || '').toString(),
-    );
+  const registersWithStudents = registers.map((register) => {
+    const student = studentsById.get(register.studentId.toString());
 
     return {
-      id: student._id.toString(),
-      name: student.name,
-      schoolClassId,
-      schoolClassLabel,
-      schoolClassShiftLabel: schoolClassShift.label || '',
-      total: totalsByStudentId[student._id.toString()] ?? 0,
+      ...register.toJSON(),
+      student: {
+        id: student._id.toString(),
+        name: student.name,
+      },
     };
   });
 
@@ -286,21 +240,13 @@ const fetchRegistersByResponsible = async (req, res) => {
     return sum + register.product.price - register.payment;
   }, 0);
 
-  const responsibleTotals = {
-    responsibleId,
-    responsibleName,
-    balance,
-    total,
-    studentsTotals,
+  const responsibleDetails = {
+    id: responsible._id.toString(),
+    name: responsible.name,
+    balance: responsible.balance,
   };
 
-  const pagination = {
-    page,
-    totalPages,
-    nextPage,
-  };
-
-  res.json({ responsibleTotals, pagination });
+  res.json({ responsible: responsibleDetails, registers: registersWithStudents, total });
 };
 
 const updateRegisterPayment = async (req, res) => {
