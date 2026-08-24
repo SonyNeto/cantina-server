@@ -213,7 +213,6 @@ async function seed() {
               price: menuItems[0].price,
             },
             created_at: new Date(),
-            payment: 0,
             studentId: students[0]._id,
           },
         ],

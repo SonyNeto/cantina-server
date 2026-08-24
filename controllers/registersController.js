@@ -1,9 +1,9 @@
 const mongoose = require('mongoose');
+const Payment = require('../models/payment');
 const Register = require('../models/register');
 const Student = require('../models/student');
 const Responsible = require('../models/responsible');
 const { appError } = require('../utils/functions');
-const { writeAuditLog } = require('../services/auditLogService');
 
 function getPeriodFilter(query) {
   const now = new Date();
@@ -95,8 +95,12 @@ const fetchResponsiblesRegisters = async (req, res) => {
     };
   }
 
-  const registers = await Register.find({ workspaceId, ...periodFilter });
-  const students = await Student.find({ workspaceId });
+  const [registers, allRegisters, payments, students] = await Promise.all([
+    Register.find({ workspaceId, ...periodFilter }),
+    Register.find({ workspaceId }),
+    Payment.find({ workspaceId }),
+    Student.find({ workspaceId }),
+  ]);
   let responsiblesQuery = Responsible.find(responsiblesFilter).sort({ name: 1, _id: 1 });
 
   let pagination = null;
@@ -118,20 +122,37 @@ const fetchResponsiblesRegisters = async (req, res) => {
 
   const responsibles = await responsiblesQuery;
 
-  const totalsByStudentId = registers.reduce((acc, register) => {
+  const consumptionByStudentId = registers.reduce((acc, register) => {
     const studentId = register.studentId.toString();
-    acc[studentId] = (acc[studentId] ?? 0) + register.product.price - register.payment;
+    acc[studentId] = (acc[studentId] ?? 0) + register.product.price;
 
     return acc;
   }, {});
 
-  const studentTotalsByResponsible = students.map((student) => ({
+  const totalConsumptionByStudentId = allRegisters.reduce((acc, register) => {
+    const studentId = register.studentId.toString();
+    acc[studentId] = (acc[studentId] ?? 0) + register.product.price;
+
+    return acc;
+  }, {});
+
+  const studentValuesByResponsible = students.map((student) => ({
     responsibleId: student.responsibleId.toString(),
-    total: totalsByStudentId[student._id.toString()] ?? 0,
+    consumption: consumptionByStudentId[student._id.toString()] ?? 0,
+    totalConsumption: totalConsumptionByStudentId[student._id.toString()] ?? 0,
   }));
 
-  const totalsByResponsibleId = studentTotalsByResponsible.reduce((acc, studentTotal) => {
-    acc[studentTotal.responsibleId] = (acc[studentTotal.responsibleId] ?? 0) + studentTotal.total;
+  const valuesByResponsibleId = studentValuesByResponsible.reduce((acc, studentValues) => {
+    acc[studentValues.responsibleId] ??= { consumption: 0, totalConsumption: 0 };
+    acc[studentValues.responsibleId].consumption += studentValues.consumption;
+    acc[studentValues.responsibleId].totalConsumption += studentValues.totalConsumption;
+
+    return acc;
+  }, {});
+
+  const paymentsByResponsibleId = payments.reduce((acc, payment) => {
+    const responsibleId = payment.responsibleId.toString();
+    acc[responsibleId] = (acc[responsibleId] ?? 0) + payment.payment;
 
     return acc;
   }, {});
@@ -142,7 +163,10 @@ const fetchResponsiblesRegisters = async (req, res) => {
     return {
       responsibleId,
       responsibleName: responsible.name,
-      total: totalsByResponsibleId[responsibleId] ?? 0,
+      consumption: valuesByResponsibleId[responsibleId]?.consumption ?? 0,
+      total:
+        (paymentsByResponsibleId[responsibleId] ?? 0) -
+        (valuesByResponsibleId[responsibleId]?.totalConsumption ?? 0),
     };
   });
 
@@ -191,10 +215,7 @@ const fetchRegistersByStudent = async (req, res) => {
     return acc;
   }, {});
 
-  const total = totalRegisters.reduce((acc, register) => {
-    const price = register.product.price - register.payment;
-    return acc + price;
-  }, 0);
+  const total = totalRegisters.reduce((acc, register) => acc + register.product.price, 0);
 
   const pagination = {
     page,
@@ -218,11 +239,15 @@ const fetchRegistersByResponsible = async (req, res) => {
   const studentIds = students.map((student) => student._id);
   const studentsById = new Map(students.map((student) => [student._id.toString(), student]));
 
-  const registers = await Register.find({
-    workspaceId,
-    ...periodFilter,
-    studentId: { $in: studentIds },
-  }).sort({ created_at: -1, _id: -1 });
+  const [registers, allRegisters, payments] = await Promise.all([
+    Register.find({
+      workspaceId,
+      ...periodFilter,
+      studentId: { $in: studentIds },
+    }).sort({ created_at: -1, _id: -1 }),
+    Register.find({ workspaceId, studentId: { $in: studentIds } }),
+    Payment.find({ workspaceId, responsibleId }),
+  ]);
 
   const registersWithStudents = registers.map((register) => {
     const student = studentsById.get(register.studentId.toString());
@@ -236,9 +261,10 @@ const fetchRegistersByResponsible = async (req, res) => {
     };
   });
 
-  const total = registers.reduce((sum, register) => {
-    return sum + register.product.price - register.payment;
-  }, 0);
+  const consumption = registers.reduce((sum, register) => sum + register.product.price, 0);
+  const totalConsumption = allRegisters.reduce((sum, register) => sum + register.product.price, 0);
+  const totalPayments = payments.reduce((sum, payment) => sum + payment.payment, 0);
+  const total = totalPayments - totalConsumption;
 
   const responsibleDetails = {
     id: responsible._id.toString(),
@@ -246,66 +272,12 @@ const fetchRegistersByResponsible = async (req, res) => {
     balance: responsible.balance,
   };
 
-  res.json({ responsible: responsibleDetails, registers: registersWithStudents, total });
-};
-
-const updateRegisterPayment = async (req, res) => {
-  const { workspaceId, id } = req.params;
-  const { paid } = req.body;
-
-  if (typeof paid !== 'boolean') {
-    return res.status(400).json({ message: 'Status de pagamento invalido' });
-  }
-
-  const session = await mongoose.startSession();
-
-  try {
-    let register;
-
-    await session.withTransaction(async () => {
-      register = await Register.findOne({
-        workspaceId,
-        _id: id,
-      }).session(session);
-
-      if (!register) {
-        throw appError('Registro não encontrado', 404);
-      }
-
-      const previousPayment = register.payment;
-      const payment = paid ? register.product.price : 0;
-      register.payment = payment;
-      await register.save({ session });
-
-      await writeAuditLog({
-        req,
-        workspaceId,
-        action: 'register.updatePayment',
-        targetType: 'register',
-        targetId: register._id,
-        changes: {
-          registerId: register._id,
-          studentId: register.studentId,
-          product: register.product,
-          payment: {
-            from: previousPayment,
-            to: payment,
-          },
-        },
-        session,
-      });
-    });
-
-    return res.json({ register });
-  } catch (error) {
-    const responseStatus = error.status ?? 500;
-
-    res.status(responseStatus).json({
-      message: responseStatus < 500 ? error.message : 'Erro ao atualizar registro',
-    });
-  } finally {
-    await session.endSession();
-  }
+  res.json({
+    responsible: responsibleDetails,
+    registers: registersWithStudents,
+    consumption,
+    total,
+  });
 };
 
 module.exports = {
@@ -315,5 +287,4 @@ module.exports = {
   fetchRegistersSummary,
   fetchRegistersByStudent,
   fetchRegistersByResponsible,
-  updateRegisterPayment,
 };
