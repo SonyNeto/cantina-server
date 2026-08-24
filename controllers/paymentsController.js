@@ -133,6 +133,7 @@ const postPayment = async (req, res) => {
             responsibleId,
             created_at: paymentDate,
             payment: paymentValue,
+            type: 'balance',
           },
         ],
         { session },
@@ -147,6 +148,7 @@ const postPayment = async (req, res) => {
           responsibleId: responsible._id,
           responsibleName: responsible.name,
           payment: payment.payment,
+          type: payment.type,
           created_at: payment.created_at,
           balance: {
             from: previousBalance,

@@ -29,6 +29,16 @@ const paymentSchema = new mongoose.Schema(
       ref: 'Responsible',
       required: true,
     },
+    type: {
+      type: String,
+      enum: ['balance', 'order'],
+      required: true,
+    },
+    sourceOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Order',
+      required: false,
+    },
   },
   {
     toJSON: toJSONOptions(),
@@ -38,6 +48,19 @@ const paymentSchema = new mongoose.Schema(
 paymentSchema.index({
   workspaceId: 1,
 });
+
+paymentSchema.index(
+  {
+    workspaceId: 1,
+    sourceOrderId: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      sourceOrderId: { $type: 'objectId' },
+    },
+  },
+);
 
 const Payment = mongoose.model('Payment', paymentSchema);
 
