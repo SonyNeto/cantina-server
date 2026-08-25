@@ -5,7 +5,7 @@ const Student = require('../models/student');
 
 const TARGET_TYPES_BY_CATEGORY = {
   orders: ['order', 'orderItem'],
-  registers: ['register'],
+  registers: ['register', 'payment'],
   menuItems: ['menuItem'],
   workspace: [
     'workspace',
@@ -167,7 +167,9 @@ const fetchAuditLogsByType = async (req, res) => {
       ),
     ];
     const orders = orderIds.length
-      ? await Order.find({ workspaceId, _id: { $in: orderIds } }).select('studentId').lean()
+      ? await Order.find({ workspaceId, _id: { $in: orderIds } })
+          .select('studentId')
+          .lean()
       : [];
     const ordersById = new Map(orders.map((order) => [order._id.toString(), order]));
     const studentIds = [

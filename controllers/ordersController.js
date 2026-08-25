@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Order = require('../models/order');
+const Payment = require('../models/payment');
 const Register = require('../models/register');
 const MenuItem = require('../models/menuItem');
 const Student = require('../models/student');
@@ -35,8 +36,16 @@ function parseOrderDate(value) {
   return new Date(Number(year), Number(month) - 1, Number(day));
 }
 
-async function finishOrder(order, session) {
-  if (order.keepChange && order.payment > 0) {
+async function finishOrder(order, session, req) {
+  const paymentApplied = order.paymentApplied ?? 0;
+  const remainingPayment = Math.max((order.payment ?? 0) - paymentApplied, 0);
+  const paymentValue = order.hasRegisteredItems
+    ? order.keepChange
+      ? order.payment
+      : paymentApplied
+    : 0;
+
+  if (paymentValue > 0) {
     const student = await Student.findOne({
       workspaceId: order.workspaceId,
       _id: order.studentId,
@@ -46,25 +55,56 @@ async function finishOrder(order, session) {
       throw appError('Aluno nao encontrado', 404);
     }
 
-    const balanceUpdate = await Responsible.updateOne(
-      {
-        workspaceId: order.workspaceId,
-        _id: student.responsibleId,
-      },
-      {
-        $inc: {
-          balance: order.payment,
-        },
-      },
-      {
-        session,
-        runValidators: true,
-      },
-    );
+    const responsible = await Responsible.findOne({
+      workspaceId: order.workspaceId,
+      _id: student.responsibleId,
+    }).session(session);
 
-    if (balanceUpdate.matchedCount === 0) {
+    if (!responsible) {
       throw appError('Responsavel nao encontrado', 404);
     }
+
+    const previousBalance = responsible.balance;
+    const balanceToAdd = order.keepChange ? remainingPayment : 0;
+
+    if (balanceToAdd > 0) {
+      responsible.balance += balanceToAdd;
+      await responsible.save({ session });
+    }
+
+    const [payment] = await Payment.create(
+      [
+        {
+          workspaceId: order.workspaceId,
+          responsibleId: responsible._id,
+          created_at: parseOrderDate(order.created_at),
+          payment: paymentValue,
+          type: 'order',
+          sourceOrderId: order._id,
+        },
+      ],
+      { session },
+    );
+
+    await writeAuditLog({
+      req,
+      action: 'payment.created',
+      targetType: 'payment',
+      targetId: payment._id,
+      changes: {
+        responsibleId: responsible._id,
+        responsibleName: responsible.name,
+        orderId: order._id,
+        payment: payment.payment,
+        type: payment.type,
+        created_at: payment.created_at,
+        balance: {
+          from: previousBalance,
+          to: responsible.balance,
+        },
+      },
+      session,
+    });
   }
 
   await Order.deleteOne(
@@ -76,11 +116,11 @@ async function finishOrder(order, session) {
   );
 }
 
-async function removeOrderItem(order, itemId, session) {
+async function removeOrderItem(order, itemId, session, req) {
   order.items.pull(itemId);
 
   if (order.items.length === 0) {
-    await finishOrder(order, session);
+    await finishOrder(order, session, req);
     return;
   }
 
@@ -264,6 +304,8 @@ const postOrder = async (req, res) => {
             created_at,
             studentId,
             payment,
+            paymentApplied: 0,
+            hasRegisteredItems: false,
             keepChange,
             details: normalizedDetails || undefined,
             items: itemsToCreate,
@@ -382,7 +424,7 @@ const deleteOrderItem = async (req, res) => {
 
       const itemData = item.toObject();
 
-      await removeOrderItem(order, itemId, session);
+      await removeOrderItem(order, itemId, session, req);
 
       await writeAuditLog({
         req,
@@ -466,12 +508,12 @@ const registerOrderItem = async (req, res) => {
       }
 
       const price = item.product.price;
-      const paymentApplied = Math.min(order.payment ?? 0, price);
-      order.payment = (order.payment ?? 0) - paymentApplied;
+      const remainingOrderPayment = Math.max((order.payment ?? 0) - (order.paymentApplied ?? 0), 0);
+      const paymentApplied = Math.min(remainingOrderPayment, price);
+      order.paymentApplied = (order.paymentApplied ?? 0) + paymentApplied;
 
       const remainingPrice = price - paymentApplied;
       const balanceApplied = Math.min(remainingPrice, responsible.balance ?? 0);
-      const itemPayment = paymentApplied + balanceApplied;
 
       if (balanceApplied > 0) {
         const balanceUpdate = await Responsible.updateOne(
@@ -503,12 +545,13 @@ const registerOrderItem = async (req, res) => {
             sourceOrderItemId: item._id,
             product: item.product,
             created_at: parseOrderDate(order.created_at),
-            payment: itemPayment,
             studentId: order.studentId,
           },
         ],
         { session },
       );
+
+      order.hasRegisteredItems = true;
 
       await writeAuditLog({
         req,
@@ -524,12 +567,11 @@ const registerOrderItem = async (req, res) => {
           price,
           paymentApplied,
           balanceApplied,
-          payment: itemPayment,
         },
         session,
       });
 
-      await removeOrderItem(order, itemId, session);
+      await removeOrderItem(order, itemId, session, req);
     });
 
     return res.json({ register });

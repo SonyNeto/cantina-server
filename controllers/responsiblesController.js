@@ -3,6 +3,7 @@ const Responsible = require('../models/responsible');
 const Student = require('../models/student');
 const Register = require('../models/register');
 const Order = require('../models/order');
+const Payment = require('../models/payment');
 const { writeAuditLog } = require('../services/auditLogService');
 const { appError } = require('../utils/functions');
 
@@ -168,9 +169,13 @@ const deleteResponsible = async (req, res) => {
         workspaceId,
         studentId: { $in: studentIds },
       }).session(session);
+      const paymentCount = await Payment.countDocuments({ workspaceId, responsibleId }).session(
+        session,
+      );
 
       await Register.deleteMany({ workspaceId, studentId: { $in: studentIds } }, { session });
       await Order.deleteMany({ workspaceId, studentId: { $in: studentIds } }, { session });
+      await Payment.deleteMany({ workspaceId, responsibleId }, { session });
       await Student.deleteMany({ workspaceId, responsibleId }, { session });
       await Responsible.findOneAndDelete({ workspaceId, _id: responsibleId }).session(session);
 
@@ -184,6 +189,7 @@ const deleteResponsible = async (req, res) => {
           studentCount: students.length,
           orderCount,
           registerCount,
+          paymentCount,
         },
         session,
       });

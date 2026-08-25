@@ -9,6 +9,7 @@ const studentsRoutes = require('./workspace/students.routes');
 const ordersRoutes = require('./workspace/orders.routes');
 const menuItemsRoutes = require('./workspace/menuItems.routes');
 const registersRoutes = require('./workspace/registers.routes');
+const paymentsRoutes = require('./workspace/payments.routes');
 const auditLogsRoutes = require('./workspace/auditLogs.routes');
 const membershipsRoutes = require('./workspace/memberships.routes');
 
@@ -21,6 +22,7 @@ router.use('/responsibles', responsiblesRoutes);
 router.use(studentsRoutes);
 router.use('/menu-items', menuItemsRoutes);
 router.use(registersRoutes);
+router.use(paymentsRoutes);
 router.use(ordersRoutes);
 router.use('/audit-logs', auditLogsRoutes);
 router.use('/memberships', membershipsRoutes);
