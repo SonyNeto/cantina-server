@@ -5,7 +5,7 @@ const registersController = require('../../controllers/registersController');
 router.get(
   '/registers/responsibles',
   requireWorkspaceAdmin,
-  registersController.fetchResponsiblesRegisters,
+  registersController.fetchResponsibleAccounts,
 );
 router.get('/registers', requireWorkspaceAdmin, registersController.fetchRegisters);
 router.get('/registers/summary', requireWorkspaceAdmin, registersController.fetchRegistersSummary);

@@ -13,14 +13,13 @@ const responsibleSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    balance: {
+    accountBalance: {
       type: Number,
       required: true,
       default: 0,
-      min: 0,
       validate: {
         validator: Number.isSafeInteger,
-        message: 'O saldo deve ser informado em centavos',
+        message: 'O saldo da conta deve ser informado em centavos',
       },
     },
   },
