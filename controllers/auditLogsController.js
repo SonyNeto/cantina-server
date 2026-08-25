@@ -167,7 +167,9 @@ const fetchAuditLogsByType = async (req, res) => {
       ),
     ];
     const orders = orderIds.length
-      ? await Order.find({ workspaceId, _id: { $in: orderIds } }).select('studentId').lean()
+      ? await Order.find({ workspaceId, _id: { $in: orderIds } })
+          .select('studentId')
+          .lean()
       : [];
     const ordersById = new Map(orders.map((order) => [order._id.toString(), order]));
     const studentIds = [

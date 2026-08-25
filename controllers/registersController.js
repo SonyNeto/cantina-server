@@ -157,18 +157,35 @@ const fetchResponsiblesRegisters = async (req, res) => {
     return acc;
   }, {});
 
-  const responsiblesTotals = responsibles.map((responsible) => {
-    const responsibleId = responsible._id.toString();
+  const responsiblesTotals = responsibles
+    .map((responsible) => {
+      const responsibleId = responsible._id.toString();
 
-    return {
-      responsibleId,
-      responsibleName: responsible.name,
-      consumption: valuesByResponsibleId[responsibleId]?.consumption ?? 0,
-      total:
+      const consumption = valuesByResponsibleId[responsibleId]?.consumption ?? 0;
+
+      const total =
         (paymentsByResponsibleId[responsibleId] ?? 0) -
-        (valuesByResponsibleId[responsibleId]?.totalConsumption ?? 0),
-    };
-  });
+        (valuesByResponsibleId[responsibleId]?.totalConsumption ?? 0);
+
+      return {
+        responsibleId,
+        responsibleName: responsible.name,
+        consumption,
+        total,
+      };
+    })
+    .sort((a, b) => {
+      const aIsDebtor = a.total < 0;
+      const bIsDebtor = b.total < 0;
+
+      if (aIsDebtor && !bIsDebtor) return -1;
+      if (!aIsDebtor && bIsDebtor) return 1;
+      if (aIsDebtor && bIsDebtor) {
+        return a.total - b.total;
+      }
+
+      return a.responsibleName.localeCompare(b.responsibleName);
+    });
 
   res.json({ responsiblesTotals, pagination });
 };
