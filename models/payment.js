@@ -31,7 +31,7 @@ const paymentSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['balance', 'order'],
+      enum: ['manual', 'order'],
       required: true,
     },
     sourceOrderId: {

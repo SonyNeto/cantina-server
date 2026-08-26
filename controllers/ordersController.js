@@ -4,9 +4,9 @@ const Payment = require('../models/payment');
 const Register = require('../models/register');
 const MenuItem = require('../models/menuItem');
 const Student = require('../models/student');
-const Responsible = require('../models/responsible');
 const SchoolClass = require('../models/schoolClass');
 const { writeAuditLog } = require('../services/auditLogService');
+const { adjustResponsibleAccountBalance } = require('../services/responsibleAccountService');
 const { appError } = require('../utils/functions');
 
 const ORDER_STATUS = {
@@ -38,7 +38,6 @@ function parseOrderDate(value) {
 
 async function finishOrder(order, session, req) {
   const paymentApplied = order.paymentApplied ?? 0;
-  const remainingPayment = Math.max((order.payment ?? 0) - paymentApplied, 0);
   const paymentValue = order.hasRegisteredItems
     ? order.keepChange
       ? order.payment
@@ -55,22 +54,13 @@ async function finishOrder(order, session, req) {
       throw appError('Aluno nao encontrado', 404);
     }
 
-    const responsible = await Responsible.findOne({
+    const accountUpdate = await adjustResponsibleAccountBalance({
       workspaceId: order.workspaceId,
-      _id: student.responsibleId,
-    }).session(session);
-
-    if (!responsible) {
-      throw appError('Responsavel nao encontrado', 404);
-    }
-
-    const previousBalance = responsible.balance;
-    const balanceToAdd = order.keepChange ? remainingPayment : 0;
-
-    if (balanceToAdd > 0) {
-      responsible.balance += balanceToAdd;
-      await responsible.save({ session });
-    }
+      responsibleId: student.responsibleId,
+      amount: paymentValue,
+      session,
+    });
+    const { responsible } = accountUpdate;
 
     const [payment] = await Payment.create(
       [
@@ -98,9 +88,9 @@ async function finishOrder(order, session, req) {
         payment: payment.payment,
         type: payment.type,
         created_at: payment.created_at,
-        balance: {
-          from: previousBalance,
-          to: responsible.balance,
+        accountBalance: {
+          from: accountUpdate.previousAccountBalance,
+          to: responsible.accountBalance,
         },
       },
       session,
@@ -498,45 +488,17 @@ const registerOrderItem = async (req, res) => {
         throw appError('Aluno nao encontrado', 404);
       }
 
-      const responsible = await Responsible.findOne({
-        workspaceId,
-        _id: student.responsibleId,
-      }).session(session);
-
-      if (!responsible) {
-        throw appError('Responsavel nao encontrado', 404);
-      }
-
       const price = item.product.price;
       const remainingOrderPayment = Math.max((order.payment ?? 0) - (order.paymentApplied ?? 0), 0);
       const paymentApplied = Math.min(remainingOrderPayment, price);
       order.paymentApplied = (order.paymentApplied ?? 0) + paymentApplied;
 
-      const remainingPrice = price - paymentApplied;
-      const balanceApplied = Math.min(remainingPrice, responsible.balance ?? 0);
-
-      if (balanceApplied > 0) {
-        const balanceUpdate = await Responsible.updateOne(
-          {
-            workspaceId,
-            _id: responsible._id,
-            balance: { $gte: balanceApplied },
-          },
-          {
-            $inc: {
-              balance: -balanceApplied,
-            },
-          },
-          {
-            session,
-            runValidators: true,
-          },
-        );
-
-        if (balanceUpdate.matchedCount === 0) {
-          throw appError('Saldo insuficiente', 409);
-        }
-      }
+      const accountUpdate = await adjustResponsibleAccountBalance({
+        workspaceId,
+        responsibleId: student.responsibleId,
+        amount: -price,
+        session,
+      });
 
       [register] = await Register.create(
         [
@@ -566,7 +528,10 @@ const registerOrderItem = async (req, res) => {
           product: register.product,
           price,
           paymentApplied,
-          balanceApplied,
+          accountBalance: {
+            from: accountUpdate.previousAccountBalance,
+            to: accountUpdate.responsible.accountBalance,
+          },
         },
         session,
       });

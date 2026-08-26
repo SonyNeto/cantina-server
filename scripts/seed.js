@@ -125,12 +125,12 @@ async function seed() {
           {
             name: 'Fulano',
             workspaceId: workspace._id,
-            balance: 0,
+            accountBalance: 0,
           },
           {
             name: 'Sicrano',
             workspaceId: workspace._id,
-            balance: 10000,
+            accountBalance: 10000,
           },
         ],
         { session },

@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Payment = require('../models/payment');
 const Responsible = require('../models/responsible');
 const { writeAuditLog } = require('../services/auditLogService');
+const { adjustResponsibleAccountBalance } = require('../services/responsibleAccountService');
 const { appError } = require('../utils/functions');
 
 function getPeriodFilter(query) {
@@ -116,15 +117,13 @@ const postPayment = async (req, res) => {
     let responsible;
 
     await session.withTransaction(async () => {
-      responsible = await Responsible.findOne({ workspaceId, _id: responsibleId }).session(session);
-
-      if (!responsible) {
-        throw appError('Responsavel nao encontrado', 404);
-      }
-
-      const previousBalance = responsible.balance;
-      responsible.balance += paymentValue;
-      await responsible.save({ session });
+      const accountUpdate = await adjustResponsibleAccountBalance({
+        workspaceId,
+        responsibleId,
+        amount: paymentValue,
+        session,
+      });
+      responsible = accountUpdate.responsible;
 
       [payment] = await Payment.create(
         [
@@ -133,7 +132,7 @@ const postPayment = async (req, res) => {
             responsibleId,
             created_at: paymentDate,
             payment: paymentValue,
-            type: 'balance',
+            type: 'manual',
           },
         ],
         { session },
@@ -150,9 +149,9 @@ const postPayment = async (req, res) => {
           payment: payment.payment,
           type: payment.type,
           created_at: payment.created_at,
-          balance: {
-            from: previousBalance,
-            to: responsible.balance,
+          accountBalance: {
+            from: accountUpdate.previousAccountBalance,
+            to: responsible.accountBalance,
           },
         },
         session,
