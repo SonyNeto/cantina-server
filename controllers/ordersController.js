@@ -203,8 +203,29 @@ const fetchOrder = async (req, res) => {
   const { workspaceId, id } = req.params;
 
   const order = await Order.findOne({ workspaceId, _id: id });
+  const student = order
+    ? await Student.findOne({ workspaceId, _id: order.studentId }).select('name')
+    : null;
+  const serializedOrder = order
+    ? {
+        ...order.toJSON(),
+        items: order.items.map((item) => ({
+          id: item._id.toString(),
+          product: serializeProduct(item.product),
+          status: item.status,
+        })),
+      }
+    : null;
 
-  res.json({ order });
+  res.json({
+    order: serializedOrder,
+    student: student
+      ? {
+          id: student._id.toString(),
+          name: student.name,
+        }
+      : null,
+  });
 };
 
 const fetchOrdersByStudent = async (req, res) => {
@@ -339,6 +360,185 @@ const postOrder = async (req, res) => {
   }
 };
 
+const updateOrder = async (req, res) => {
+  const { workspaceId, id } = req.params;
+  const { payment, keepChange, details, items } = req.body;
+  const session = await mongoose.startSession();
+
+  try {
+    if (details !== undefined && typeof details !== 'string') {
+      throw appError('A observação deve ser um texto');
+    }
+
+    const normalizedDetails = details?.trim();
+    if (normalizedDetails && normalizedDetails.length > 100) {
+      throw appError('A observação deve ter no máximo 100 caracteres');
+    }
+
+    if (!Number.isSafeInteger(payment) || payment < 0) {
+      throw appError('O pagamento deve ser informado em centavos');
+    }
+
+    if (typeof keepChange !== 'boolean') {
+      throw appError('A opção de manter o troco é inválida');
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw appError('Pedido precisa ter pelo menos um item');
+    }
+
+    let order;
+
+    await session.withTransaction(async () => {
+      order = await Order.findOne({ workspaceId, _id: id }).session(session);
+
+      if (!order) {
+        throw appError('Pedido nao encontrado', 404);
+      }
+
+      if (!order.items.some((item) => item.status === ORDER_STATUS.COOKING)) {
+        throw appError('Pedido pronto deve voltar para preparação antes de ser editado', 409);
+      }
+
+      if (
+        order.hasRegisteredItems &&
+        (payment !== order.payment || keepChange !== order.keepChange)
+      ) {
+        throw appError('Pagamento não pode ser alterado após o primeiro item registrado', 409);
+      }
+
+      const requestedIds = new Set();
+
+      for (const itemRequest of items) {
+        if (!itemRequest || typeof itemRequest.productId !== 'string') {
+          throw appError('Produto do item é inválido');
+        }
+
+        if (!itemRequest.id) continue;
+
+        if (requestedIds.has(itemRequest.id)) {
+          throw appError('Item duplicado no pedido');
+        }
+
+        const existingItem = order.items.id(itemRequest.id);
+
+        if (!existingItem) {
+          throw appError('Item nao encontrado', 404);
+        }
+
+        if (
+          existingItem.status === ORDER_STATUS.READY &&
+          itemRequest.productId !== existingItem.product.id
+        ) {
+          throw appError('Item pronto não pode ser alterado', 409);
+        }
+
+        requestedIds.add(itemRequest.id);
+      }
+
+      const removedReadyItem = order.items.some(
+        (item) => item.status === ORDER_STATUS.READY && !requestedIds.has(item._id.toString()),
+      );
+
+      if (removedReadyItem) {
+        throw appError('Item pronto não pode ser removido', 409);
+      }
+
+      const productIds = [
+        ...new Set(
+          items.flatMap((itemRequest) => {
+            const existingItem = itemRequest.id ? order.items.id(itemRequest.id) : null;
+
+            return !existingItem || itemRequest.productId !== existingItem.product.id
+              ? [itemRequest.productId]
+              : [];
+          }),
+        ),
+      ];
+      const products = await MenuItem.find({ workspaceId, _id: { $in: productIds } }).session(
+        session,
+      );
+      const productsById = new Map(products.map((product) => [product._id.toString(), product]));
+
+      if (productsById.size !== productIds.length) {
+        throw appError('Produto nao encontrado', 404);
+      }
+
+      const previousOrder = {
+        payment: order.payment,
+        keepChange: order.keepChange,
+        details: order.details,
+        items: order.items.map((item) => ({
+          id: item._id,
+          product: item.product,
+          status: item.status,
+        })),
+      };
+      const itemsToUpdate = items.map((itemRequest) => {
+        const existingItem = itemRequest.id ? order.items.id(itemRequest.id) : null;
+        const product =
+          existingItem && itemRequest.productId === existingItem.product.id
+            ? existingItem.product
+            : serializeProduct(productsById.get(itemRequest.productId));
+
+        return {
+          ...(existingItem ? { _id: existingItem._id } : {}),
+          product,
+          status: existingItem?.status ?? ORDER_STATUS.COOKING,
+        };
+      });
+
+      if (!order.hasRegisteredItems) {
+        order.payment = payment;
+        order.keepChange = keepChange;
+      }
+      order.details = normalizedDetails || undefined;
+      order.items = itemsToUpdate;
+      await order.save({ session });
+
+      await writeAuditLog({
+        req,
+        action: 'order.updated',
+        targetType: 'order',
+        targetId: order._id,
+        changes: {
+          payment: {
+            from: previousOrder.payment,
+            to: order.payment,
+          },
+          keepChange: {
+            from: previousOrder.keepChange,
+            to: order.keepChange,
+          },
+          details: {
+            from: previousOrder.details,
+            to: order.details,
+          },
+          items: {
+            from: previousOrder.items,
+            to: order.items.map((item) => ({
+              id: item._id,
+              product: item.product,
+              status: item.status,
+            })),
+          },
+        },
+        session,
+      });
+    });
+
+    res.json({ order });
+  } catch (error) {
+    const status = error.status ?? 500;
+
+    res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao atualizar pedido',
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
 const updateOrderItemStatus = async (req, res) => {
   const { workspaceId, orderId, itemId } = req.params;
   const { status } = req.body;
@@ -412,6 +612,10 @@ const deleteOrderItem = async (req, res) => {
         throw appError('Item nao encontrado', 404);
       }
 
+      if (item.status !== ORDER_STATUS.COOKING) {
+        throw appError('Item pronto deve voltar para preparação antes de ser excluído', 409);
+      }
+
       const itemData = item.toObject();
 
       await removeOrderItem(order, itemId, session, req);
@@ -446,6 +650,94 @@ const deleteOrderItem = async (req, res) => {
   }
 };
 
+async function registerOrderItemInSession({ workspaceId, orderId, itemId, session, req }) {
+  const order = await Order.findOne({
+    workspaceId,
+    _id: orderId,
+    'items._id': itemId,
+  }).session(session);
+
+  const existingRegister = await Register.findOne({
+    workspaceId,
+    sourceOrderItemId: itemId,
+  }).session(session);
+
+  if (existingRegister) {
+    throw appError('Item ja registrado', 409);
+  }
+
+  const item = order?.items.id(itemId);
+
+  if (!order || !item) {
+    throw appError('Item nao encontrado', 404);
+  }
+
+  if (item.status !== ORDER_STATUS.READY) {
+    throw appError('Item ainda nao esta pronto', 400);
+  }
+
+  const student = await Student.findOne({
+    workspaceId,
+    _id: order.studentId,
+  }).session(session);
+
+  if (!student) {
+    throw appError('Aluno nao encontrado', 404);
+  }
+
+  const price = item.product.price;
+  const remainingOrderPayment = Math.max((order.payment ?? 0) - (order.paymentApplied ?? 0), 0);
+  const paymentApplied = Math.min(remainingOrderPayment, price);
+  order.paymentApplied = (order.paymentApplied ?? 0) + paymentApplied;
+
+  const accountUpdate = await adjustResponsibleAccountBalance({
+    workspaceId,
+    responsibleId: student.responsibleId,
+    amount: -price,
+    session,
+  });
+
+  const [register] = await Register.create(
+    [
+      {
+        workspaceId,
+        sourceOrderItemId: item._id,
+        product: item.product,
+        created_at: parseOrderDate(order.created_at),
+        studentId: order.studentId,
+      },
+    ],
+    { session },
+  );
+
+  order.hasRegisteredItems = true;
+
+  await writeAuditLog({
+    req,
+    action: 'orderItem.register',
+    targetType: 'register',
+    targetId: register._id,
+    changes: {
+      registerId: register._id,
+      orderId,
+      itemId,
+      studentId: order.studentId,
+      product: register.product,
+      price,
+      paymentApplied,
+      accountBalance: {
+        from: accountUpdate.previousAccountBalance,
+        to: accountUpdate.responsible.accountBalance,
+      },
+    },
+    session,
+  });
+
+  await removeOrderItem(order, itemId, session, req);
+
+  return register;
+}
+
 const registerOrderItem = async (req, res) => {
   const { workspaceId, orderId, itemId } = req.params;
   const session = await mongoose.startSession();
@@ -454,89 +746,13 @@ const registerOrderItem = async (req, res) => {
 
   try {
     await session.withTransaction(async () => {
-      const order = await Order.findOne({
+      register = await registerOrderItemInSession({
         workspaceId,
-        _id: orderId,
-        'items._id': itemId,
-      }).session(session);
-
-      register = await Register.findOne({
-        workspaceId,
-        sourceOrderItemId: itemId,
-      }).session(session);
-
-      if (register) {
-        throw appError('Item ja registrado', 409);
-      }
-
-      const item = order?.items.id(itemId);
-
-      if (!order || !item) {
-        throw appError('Item nao encontrado', 404);
-      }
-
-      if (item.status !== ORDER_STATUS.READY) {
-        throw appError('Item ainda nao esta pronto', 400);
-      }
-
-      const student = await Student.findOne({
-        workspaceId,
-        _id: order.studentId,
-      }).session(session);
-
-      if (!student) {
-        throw appError('Aluno nao encontrado', 404);
-      }
-
-      const price = item.product.price;
-      const remainingOrderPayment = Math.max((order.payment ?? 0) - (order.paymentApplied ?? 0), 0);
-      const paymentApplied = Math.min(remainingOrderPayment, price);
-      order.paymentApplied = (order.paymentApplied ?? 0) + paymentApplied;
-
-      const accountUpdate = await adjustResponsibleAccountBalance({
-        workspaceId,
-        responsibleId: student.responsibleId,
-        amount: -price,
+        orderId,
+        itemId,
         session,
-      });
-
-      [register] = await Register.create(
-        [
-          {
-            workspaceId,
-            sourceOrderItemId: item._id,
-            product: item.product,
-            created_at: parseOrderDate(order.created_at),
-            studentId: order.studentId,
-          },
-        ],
-        { session },
-      );
-
-      order.hasRegisteredItems = true;
-
-      await writeAuditLog({
         req,
-        action: 'orderItem.register',
-        targetType: 'register',
-        targetId: register._id,
-        changes: {
-          registerId: register._id,
-          orderId,
-          itemId,
-          studentId: order.studentId,
-          product: register.product,
-          price,
-          paymentApplied,
-          accountBalance: {
-            from: accountUpdate.previousAccountBalance,
-            to: accountUpdate.responsible.accountBalance,
-          },
-        },
-        session,
       });
-
-      await removeOrderItem(order, itemId, session, req);
     });
 
     return res.json({ register });
@@ -551,13 +767,63 @@ const registerOrderItem = async (req, res) => {
   }
 };
 
+const registerReadyOrderItems = async (req, res) => {
+  const { workspaceId } = req.params;
+  const session = await mongoose.startSession();
+  let registers = [];
+
+  try {
+    await session.withTransaction(async () => {
+      const createdRegisters = [];
+      const orders = await Order.find({
+        workspaceId,
+        'items.status': ORDER_STATUS.READY,
+      }).session(session);
+      const readyItems = orders.flatMap((order) =>
+        order.items
+          .filter((item) => item.status === ORDER_STATUS.READY)
+          .map((item) => ({
+            orderId: order._id,
+            itemId: item._id,
+          })),
+      );
+
+      for (const { orderId, itemId } of readyItems) {
+        const register = await registerOrderItemInSession({
+          workspaceId,
+          orderId,
+          itemId,
+          session,
+          req,
+        });
+
+        createdRegisters.push(register);
+      }
+
+      registers = createdRegisters;
+    });
+
+    return res.json({ registers });
+  } catch (error) {
+    const status = error.status ?? 500;
+
+    return res.status(status).json({
+      message: status < 500 ? error.message : 'Erro ao registrar itens prontos',
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
 module.exports = {
   fetchOrder,
   fetchOrders,
   fetchOrdersByStatus,
   fetchOrdersByStudent,
   postOrder,
+  updateOrder,
   updateOrderItemStatus,
   deleteOrderItem,
   registerOrderItem,
+  registerReadyOrderItems,
 };
