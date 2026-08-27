@@ -6,6 +6,8 @@ router.get('/orders/:id', ordersController.fetchOrder);
 router.get('/orders', ordersController.fetchOrders);
 router.get('/students/:studentId/orders', ordersController.fetchOrdersByStudent);
 router.post('/orders', ordersController.postOrder);
+router.post('/orders/register-ready', ordersController.registerReadyOrderItems);
+router.patch('/orders/:id', ordersController.updateOrder);
 router.patch('/orders/:orderId/items/:itemId/status', ordersController.updateOrderItemStatus);
 router.post('/orders/:orderId/items/:itemId/register', ordersController.registerOrderItem);
 router.delete('/orders/:orderId/items/:itemId', ordersController.deleteOrderItem);
